@@ -1,14 +1,17 @@
 # MarkdownView
 
-Ultra-lightweight native macOS markdown reader.
+Ultra-lightweight native macOS markdown **editor** with live preview.
 
-Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled markdown parser renders to `NSAttributedString` in a read-only `NSTextView`.
+Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled markdown parser renders to `NSAttributedString` in a split-pane layout: editable source on the left, live preview on the right.
 
 ## Features
 
+- **Split-pane editor** — left: plain monospaced markdown source; right: live rendered preview
+- **Live preview** updates as you type
+- **Save** with Cmd+S (atomic write); **Save As…** via Cmd+Shift+S; dirty indicator (`•`) in the window title
 - **Open** files via Cmd+O, drag & drop, or CLI path argument
-- **Live reload** when the file changes on disk
-- **Font size** increase/decrease (Cmd+ / Cmd-)
+- **Live reload** when the file changes on disk (does not clobber unsaved edits)
+- **Font size** increase/decrease (Cmd+ / Cmd-) applies to both panes
 - **Print** (Cmd+P) and **manual reload** (Cmd+R)
 - Text selection, copy, and Cmd+F find (native NSTextView)
 - Dark mode via semantic system colors

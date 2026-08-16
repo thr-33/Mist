@@ -23,13 +23,25 @@ struct MarkdownViewApp: App {
         WindowGroup {
             ContentView(model: model)
         }
-        .defaultSize(width: 720, height: 900)
+        .defaultSize(width: 960, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") {
                     model.openPanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+            }
+
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") {
+                    model.save()
+                }
+                .keyboardShortcut("s", modifiers: .command)
+
+                Button("Save As…") {
+                    model.saveAs()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
             }
 
             CommandGroup(after: .newItem) {
