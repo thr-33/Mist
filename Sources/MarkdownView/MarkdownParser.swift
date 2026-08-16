@@ -65,6 +65,17 @@ public enum MarkdownParser {
                 continue
             }
 
+            // Underline <u>...</u> (HTML-ish; markdown has no native underline)
+            if text[i] == "<", text[i...].hasPrefix("<u>") {
+                let contentStart = text.index(i, offsetBy: 3)
+                if let end = findClosingTag(text, from: contentStart, tag: "</u>") {
+                    flushPlain()
+                    result.append(.underline(String(text[contentStart..<end])))
+                    i = text.index(end, offsetBy: 4) // past </u>
+                    continue
+                }
+            }
+
             // Link [text](url)
             if text[i] == "[",
                let link = parseLink(text, from: i) {
@@ -276,6 +287,17 @@ public enum MarkdownParser {
         var i = start
         while i < text.endIndex {
             if text[i...].hasPrefix(delimiter) { return i }
+            if text[i] == "\n" { return nil }
+            i = text.index(after: i)
+        }
+        return nil
+    }
+
+    /// Finds the start index of a closing HTML-ish tag (e.g. `</u>`), single-line only.
+    private static func findClosingTag(_ text: String, from start: String.Index, tag: String) -> String.Index? {
+        var i = start
+        while i < text.endIndex {
+            if text[i...].hasPrefix(tag) { return i }
             if text[i] == "\n" { return nil }
             i = text.index(after: i)
         }

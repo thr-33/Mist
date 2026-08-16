@@ -163,6 +163,22 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(nodes, [.strikethrough("gone")])
     }
 
+    func testUnderline() {
+        let nodes = MarkdownParser.parseInlines("<u>hi</u>")
+        XCTAssertEqual(nodes, [.underline("hi")])
+    }
+
+    func testUnderlineRenderAppliesUnderlineStyle() {
+        let attr = MarkdownRenderer.render("<u>hi</u>")
+        XCTAssertGreaterThan(attr.length, 0)
+        let plain = attr.string as NSString
+        let range = plain.range(of: "hi")
+        XCTAssertNotEqual(range.location, NSNotFound)
+        var effective = NSRange()
+        let value = attr.attribute(.underlineStyle, at: range.location, effectiveRange: &effective)
+        XCTAssertEqual(value as? Int, NSUnderlineStyle.single.rawValue)
+    }
+
     func testMixedInlines() {
         let nodes = MarkdownParser.parseInlines("**bold** and *em* and `c`")
         XCTAssertEqual(nodes, [

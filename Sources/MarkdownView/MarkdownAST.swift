@@ -19,4 +19,5 @@ public enum InlineNode: Equatable, Sendable {
     case code(String)
     case link(text: String, url: String)
     case strikethrough(String)
+    case underline(String)
 }

@@ -13,6 +13,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 - **Live reload** when the file changes on disk (does not clobber unsaved edits)
 - **Font size** increase/decrease (Cmd+ / Cmd-) applies to both panes
 - **Print** (Cmd+P) and **manual reload** (Cmd+R)
+- **Selection format toolbar** — popover above the source selection with bold, italic, underline (`<u>`), strikethrough, inline code, link, heading, quote, bullet list, and code block (toggles unwrap when already wrapped; dismisses on scroll / empty selection)
 - Text selection, copy, and Cmd+F find (native NSTextView)
 - Dark mode via semantic system colors
 
@@ -25,7 +26,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 | Fenced code ` ``` ` | `` `inline code` `` |
 | Unordered lists `-` / `*` | `[link](url)` |
 | Ordered lists `1.` | `~~strikethrough~~` |
-| Thematic breaks `---` | |
+| Thematic breaks `---` | `<u>underline</u>` |
 | Paragraphs | |
 
 ## Requirements

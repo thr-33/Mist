@@ -193,6 +193,13 @@ public enum MarkdownRenderer {
                 .foregroundColor: color,
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
             ])
+
+        case .underline(let s):
+            return NSAttributedString(string: s, attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+            ])
         }
     }
 
