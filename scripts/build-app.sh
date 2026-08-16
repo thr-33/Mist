@@ -41,6 +41,10 @@ else
 	<string>com.markdownview.app</string>
 	<key>CFBundleName</key>
 	<string>MarkdownView</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -56,6 +60,21 @@ else
 </dict>
 </plist>
 PLIST
+fi
+
+# App icon
+ICNS_SRC="$ROOT/scripts/AppIcon.icns"
+if [[ ! -f "$ICNS_SRC" ]]; then
+  echo "==> Generating AppIcon.icns..."
+  swift "$ROOT/scripts/generate-icon.swift"
+fi
+if [[ -f "$ICNS_SRC" ]]; then
+  echo "==> Installing AppIcon.icns into bundle Resources..."
+  RESOURCES_DIR="$CONTENTS/Resources"
+  mkdir -p "$RESOURCES_DIR"
+  cp "$ICNS_SRC" "$RESOURCES_DIR/AppIcon.icns"
+else
+  echo "warning: AppIcon.icns not found; bundle will have no custom icon" >&2
 fi
 
 echo "==> Ad-hoc codesign..."

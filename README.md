@@ -70,9 +70,19 @@ dist/MarkdownView.app/Contents/MacOS/MarkdownView path/to/file.md
 swift test
 ```
 
+## Icon
+
+The app icon is generated with a zero-dependency AppKit script:
+
+```bash
+swift scripts/generate-icon.swift
+```
+
+This draws a Big Sur–style squircle (indigo→blue gradient + white **M↓** markdown mark), writes the full `.iconset`, builds `scripts/AppIcon.icns` via `iconutil`, and saves `icon-preview.png` at the project root for a quick look without building. `./scripts/build-app.sh` embeds the icns into the bundle automatically.
+
 ## Size
 
-The release `.app` bundle is intentionally tiny — a single native executable plus `Info.plist`, typically well under 5 MB and always **≤ 20 MB**.
+The release `.app` bundle is intentionally tiny — a single native executable plus `Info.plist` and app icon, typically well under 5 MB and always **≤ 20 MB**.
 
 ## License
 
