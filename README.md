@@ -16,6 +16,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 - **Selection format toolbar** — popover above the source selection with bold, italic, underline (`<u>`), strikethrough, inline code, link, heading, quote, bullet list, and code block (toggles unwrap when already wrapped; dismisses on scroll / empty selection)
 - Text selection, copy, and Cmd+F find (native NSTextView)
 - Dark mode via semantic system colors
+- **GFM tables** (pipe tables with alignment) render as native `NSTextTable` in the preview
 
 ### Markdown support
 
@@ -28,6 +29,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 | Ordered lists `1.` | `~~strikethrough~~` |
 | Thematic breaks `---` | `<u>underline</u>` |
 | Paragraphs | |
+| GFM tables (pipe tables with alignment) | |
 
 ## Requirements
 

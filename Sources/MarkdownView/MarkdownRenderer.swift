@@ -125,7 +125,129 @@ public enum MarkdownRenderer {
                 .foregroundColor: style.secondaryColor,
             ]
             return NSAttributedString(string: "────────────", attributes: attrs)
+
+        case .table(let columns, let rows):
+            return renderTable(columns: columns, rows: rows, style: style)
         }
+    }
+
+    // MARK: - Tables
+
+    private static func renderTable(
+        columns: [TableColumn],
+        rows: [[String]],
+        style: Style
+    ) -> NSAttributedString {
+        let colCount = max(columns.count, 1)
+        let table = NSTextTable()
+        table.numberOfColumns = colCount
+        table.collapsesBorders = true
+        table.setBorderColor(NSColor.separatorColor)
+        // Border width applied per cell block below
+        table.layoutAlgorithm = .automaticLayoutAlgorithm
+
+        let result = NSMutableAttributedString()
+        let boldHeaderFont = NSFontManager.shared.convert(style.bodyFont, toHaveTrait: .boldFontMask)
+
+        // Header row
+        if columns.isEmpty {
+            appendTableCell(
+                to: result,
+                text: "",
+                table: table,
+                row: 0,
+                column: 0,
+                columnCount: 1,
+                alignment: .left,
+                font: boldHeaderFont,
+                style: style
+            )
+        } else {
+            for (col, column) in columns.enumerated() {
+                appendTableCell(
+                    to: result,
+                    text: column.header,
+                    table: table,
+                    row: 0,
+                    column: col,
+                    columnCount: colCount,
+                    alignment: column.alignment,
+                    font: boldHeaderFont,
+                    style: style
+                )
+            }
+        }
+
+        // Body rows
+        for (r, row) in rows.enumerated() {
+            for c in 0..<colCount {
+                let cellText = c < row.count ? row[c] : ""
+                let align = c < columns.count ? columns[c].alignment : TableAlignment.left
+                appendTableCell(
+                    to: result,
+                    text: cellText,
+                    table: table,
+                    row: r + 1,
+                    column: c,
+                    columnCount: colCount,
+                    alignment: align,
+                    font: style.bodyFont,
+                    style: style
+                )
+            }
+        }
+
+        // Trailing newline so following blocks don't merge into the table's last cell
+        result.append(NSAttributedString(string: "\n", attributes: baseAttrs(style)))
+        return result
+    }
+
+    private static func appendTableCell(
+        to result: NSMutableAttributedString,
+        text: String,
+        table: NSTextTable,
+        row: Int,
+        column: Int,
+        columnCount: Int,
+        alignment: TableAlignment,
+        font: NSFont,
+        style: Style
+    ) {
+        let block = NSTextTableBlock(table: table, startingRow: row, rowSpan: 1, startingColumn: column, columnSpan: 1)
+        block.setBorderColor(NSColor.separatorColor)
+        block.setWidth(0.5, type: .absoluteValueType, for: .border)
+        block.setWidth(6, type: .absoluteValueType, for: .padding)
+        // Equal percentage widths keep columns aligned
+        let pct = 100.0 / CGFloat(max(columnCount, 1))
+        block.setValue(pct, type: .percentageValueType, for: .width)
+
+        let para = NSMutableParagraphStyle()
+        para.textBlocks = [block]
+        switch alignment {
+        case .left: para.alignment = .left
+        case .center: para.alignment = .center
+        case .right: para.alignment = .right
+        }
+
+        // NBSP keeps empty cells from collapsing during layout
+        let display = text.isEmpty ? "\u{00A0}" : text
+        let cellContent = renderInlines(display, font: font, color: style.textColor, style: style)
+        let mutable = NSMutableAttributedString(attributedString: cellContent)
+        if mutable.length == 0 {
+            mutable.append(NSAttributedString(string: "\u{00A0}", attributes: [
+                .font: font,
+                .foregroundColor: style.textColor,
+            ]))
+        }
+        // Terminate cell paragraph with \n so NSTextView assembles contiguous table cells
+        mutable.append(NSAttributedString(string: "\n", attributes: [
+            .font: font,
+            .foregroundColor: style.textColor,
+        ]))
+        let range = NSRange(location: 0, length: mutable.length)
+        mutable.addAttribute(.paragraphStyle, value: para, range: range)
+
+        result.append(mutable)
     }
 
     // MARK: - Inlines

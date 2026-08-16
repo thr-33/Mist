@@ -198,6 +198,32 @@ public enum MarkdownParser {
                 continue
             }
 
+            // GFM pipe table (header + delimiter row required)
+            if lineContainsUnescapedPipe(trimmed),
+               i + 1 < lines.count,
+               let alignments = parseDelimiterRow(lines[i + 1].trimmingCharacters(in: .whitespaces)) {
+                let headerCells = splitTableCells(trimmed)
+                let colCount = max(headerCells.count, alignments.count, 1)
+                var columns: [TableColumn] = []
+                columns.reserveCapacity(colCount)
+                for c in 0..<colCount {
+                    let header = c < headerCells.count ? headerCells[c] : ""
+                    let align = c < alignments.count ? alignments[c] : TableAlignment.left
+                    columns.append(TableColumn(header: header, alignment: align))
+                }
+                i += 2 // consume header + delimiter
+                var rows: [[String]] = []
+                while i < lines.count {
+                    let t = lines[i].trimmingCharacters(in: .whitespaces)
+                    if t.isEmpty { break }
+                    if !lineContainsUnescapedPipe(t) { break }
+                    rows.append(normalizeRow(splitTableCells(t), columnCount: colCount))
+                    i += 1
+                }
+                blocks.append(.table(columns: columns, rows: rows))
+                continue
+            }
+
             // Paragraph (collect until blank or block start)
             var paraLines: [String] = [trimmed]
             i += 1
@@ -210,6 +236,12 @@ public enum MarkdownParser {
                 if t.hasPrefix(">") { break }
                 if isUnorderedListItem(t) { break }
                 if isOrderedListItem(t) { break }
+                // Don't swallow a table start into a paragraph
+                if lineContainsUnescapedPipe(t),
+                   i + 1 < lines.count,
+                   parseDelimiterRow(lines[i + 1].trimmingCharacters(in: .whitespaces)) != nil {
+                    break
+                }
                 paraLines.append(t)
                 i += 1
             }
@@ -328,5 +360,129 @@ public enum MarkdownParser {
             i = text.index(after: i)
         }
         return nil
+    }
+
+    // MARK: - GFM tables
+
+    /// True if `line` has a `|` that is not escaped and not inside inline code backticks.
+    private static func lineContainsUnescapedPipe(_ line: String) -> Bool {
+        var inCode = false
+        var i = line.startIndex
+        while i < line.endIndex {
+            let c = line[i]
+            if c == "`" {
+                inCode.toggle()
+            } else if c == "\\", !inCode {
+                let next = line.index(after: i)
+                if next < line.endIndex {
+                    i = next // skip escaped char
+                }
+            } else if c == "|", !inCode {
+                return true
+            }
+            i = line.index(after: i)
+        }
+        return false
+    }
+
+    /// Split a table row into cells. Leading/trailing pipes are separators.
+    /// `\|` → literal `|`; pipes inside `` `...` `` are literal.
+    private static func splitTableCells(_ line: String) -> [String] {
+        var cells: [String] = []
+        var current = ""
+        var inCode = false
+        var i = line.startIndex
+
+        while i < line.endIndex {
+            let c = line[i]
+            if c == "`" {
+                inCode.toggle()
+                current.append(c)
+                i = line.index(after: i)
+                continue
+            }
+            if !inCode, c == "\\" {
+                let next = line.index(after: i)
+                if next < line.endIndex, line[next] == "|" {
+                    current.append("|")
+                    i = line.index(after: next)
+                    continue
+                }
+                // Keep other backslash escapes as-is (backslash + char)
+                current.append(c)
+                if next < line.endIndex {
+                    current.append(line[next])
+                    i = line.index(after: next)
+                } else {
+                    i = next
+                }
+                continue
+            }
+            if !inCode, c == "|" {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+                i = line.index(after: i)
+                continue
+            }
+            current.append(c)
+            i = line.index(after: i)
+        }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+
+        // GFM: leading/trailing empty cells from edge pipes are separators, not cells
+        if cells.count >= 2, cells.first?.isEmpty == true {
+            cells.removeFirst()
+        }
+        if cells.count >= 1, cells.last?.isEmpty == true, line.trimmingCharacters(in: .whitespaces).hasSuffix("|") {
+            cells.removeLast()
+        }
+        return cells
+    }
+
+    /// Parse a delimiter row like `| :--- | ---: | :---: | --- |`.
+    /// Returns alignments if every cell matches `:?-{1,}:?` and there is ≥1 column.
+    private static func parseDelimiterRow(_ line: String) -> [TableAlignment]? {
+        guard lineContainsUnescapedPipe(line) || line.contains("-") else { return nil }
+        let cells = splitTableCells(line)
+        guard !cells.isEmpty else { return nil }
+        var alignments: [TableAlignment] = []
+        alignments.reserveCapacity(cells.count)
+        for cell in cells {
+            guard let align = parseDelimiterCell(cell) else { return nil }
+            alignments.append(align)
+        }
+        return alignments
+    }
+
+    private static func parseDelimiterCell(_ cell: String) -> TableAlignment? {
+        let t = cell.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return nil }
+        var s = t
+        var leftColon = false
+        var rightColon = false
+        if s.first == ":" {
+            leftColon = true
+            s = String(s.dropFirst())
+        }
+        if s.last == ":" {
+            rightColon = true
+            s = String(s.dropLast())
+        }
+        guard !s.isEmpty, s.allSatisfy({ $0 == "-" }) else { return nil }
+        if leftColon && rightColon { return .center }
+        if rightColon { return .right }
+        return .left
+    }
+
+    private static func normalizeRow(_ cells: [String], columnCount: Int) -> [String] {
+        if cells.count == columnCount { return cells }
+        if cells.count > columnCount {
+            return Array(cells.prefix(columnCount))
+        }
+        var padded = cells
+        while padded.count < columnCount {
+            padded.append("")
+        }
+        return padded
     }
 }

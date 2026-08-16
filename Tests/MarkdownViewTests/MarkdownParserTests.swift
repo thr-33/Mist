@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import MarkdownView
 
@@ -217,5 +218,152 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertTrue(plain.contains("link"))
         XCTAssertTrue(plain.contains("item"))
         XCTAssertTrue(plain.contains("strike"))
+    }
+
+    // MARK: - GFM tables
+
+    func testTableParseStructureAndAlignment() {
+        let md = """
+        | Left | Center | Right |
+        | :--- | :---: | ---: |
+        | a | b | c |
+        | d | e | f |
+        """
+        let blocks = MarkdownParser.parse(md)
+        XCTAssertEqual(blocks.count, 1)
+        guard case .table(let columns, let rows) = blocks[0] else {
+            return XCTFail("expected table, got \(blocks[0])")
+        }
+        XCTAssertEqual(columns.count, 3)
+        XCTAssertEqual(columns[0].header, "Left")
+        XCTAssertEqual(columns[0].alignment, .left)
+        XCTAssertEqual(columns[1].header, "Center")
+        XCTAssertEqual(columns[1].alignment, .center)
+        XCTAssertEqual(columns[2].header, "Right")
+        XCTAssertEqual(columns[2].alignment, .right)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0], ["a", "b", "c"])
+        XCTAssertEqual(rows[1], ["d", "e", "f"])
+    }
+
+    func testTableRowPaddingTruncationAndEscapes() {
+        // Build with explicit newlines so \| is a real backslash-pipe in source
+        let md = [
+            "| A | B | C |",
+            "| --- | --- | --- |",
+            "| only |",
+            "| 1 | 2 | 3 | 4 | extra |",
+            "| pipe " + "\\" + "| here | `a|b` | end |",
+        ].joined(separator: "\n")
+        let blocks = MarkdownParser.parse(md)
+        guard case .table(let columns, let rows) = blocks[0] else {
+            return XCTFail("expected table, got \(blocks)")
+        }
+        XCTAssertEqual(columns.count, 3)
+        XCTAssertEqual(rows.count, 3)
+        // short row padded
+        XCTAssertEqual(rows[0], ["only", "", ""])
+        // long row truncated
+        XCTAssertEqual(rows[1], ["1", "2", "3"])
+        // escaped pipe + pipe inside code span
+        XCTAssertEqual(rows[2][0], "pipe | here")
+        XCTAssertEqual(rows[2][1], "`a|b`")
+        XCTAssertEqual(rows[2][2], "end")
+    }
+
+    func testNonTablePipeLineStaysParagraph() {
+        let md = "a | b"
+        let blocks = MarkdownParser.parse(md)
+        XCTAssertEqual(blocks.count, 1)
+        guard case .paragraph(let t) = blocks[0] else {
+            return XCTFail("expected paragraph, got \(blocks[0])")
+        }
+        XCTAssertEqual(t, "a | b")
+    }
+
+    @MainActor
+    func testTableRenderLayoutSmoke() {
+        let md = """
+        | Name | Align |
+        | --- | :---: |
+        | **bold** | center |
+        | `code` | x |
+        """
+        let attr = MarkdownRenderer.render(md)
+        XCTAssertGreaterThan(attr.length, 0)
+        let plain = attr.string
+        XCTAssertTrue(plain.contains("Name"))
+        XCTAssertTrue(plain.contains("Align"))
+        XCTAssertTrue(plain.contains("bold"))
+        XCTAssertTrue(plain.contains("center"))
+        XCTAssertTrue(plain.contains("code"))
+
+        // Offscreen NSTextView layout — must not crash
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        tv.textStorage?.setAttributedString(attr)
+        if let lm = tv.layoutManager, let container = tv.textContainer {
+            lm.ensureLayout(for: container)
+            let glyphRange = lm.glyphRange(for: container)
+            XCTAssertGreaterThanOrEqual(glyphRange.length, 0)
+        }
+
+        // Header cell "Name" should be bold
+        let ns = plain as NSString
+        let nameRange = ns.range(of: "Name")
+        XCTAssertNotEqual(nameRange.location, NSNotFound)
+        var effective = NSRange()
+        if let font = attr.attribute(.font, at: nameRange.location, effectiveRange: &effective) as? NSFont {
+            let traits = NSFontManager.shared.traits(of: font)
+            XCTAssertTrue(traits.contains(.boldFontMask), "header font should be bold")
+        } else {
+            XCTFail("expected font on header cell")
+        }
+
+        // Center column alignment on header "Align"
+        let alignRange = ns.range(of: "Align")
+        XCTAssertNotEqual(alignRange.location, NSNotFound)
+        if let para = attr.attribute(.paragraphStyle, at: alignRange.location, effectiveRange: &effective) as? NSParagraphStyle {
+            XCTAssertEqual(para.alignment, .center)
+            XCTAssertFalse(para.textBlocks.isEmpty, "table cell should have textBlocks")
+        } else {
+            XCTFail("expected paragraphStyle on center header")
+        }
+    }
+
+    @MainActor
+    func testReadmeSupportTableRenders() {
+        // Exact structure from README "### Markdown support" table
+        let md = """
+        | Blocks | Inlines |
+        |--------|---------|
+        | ATX headings `#` … `######` | `**bold**` |
+        | Blockquotes `>` | `*italic*` |
+        | Fenced code | `` `inline code` `` |
+        | Unordered lists `-` / `*` | `[link](url)` |
+        | Ordered lists `1.` | `~~strikethrough~~` |
+        | Thematic breaks `---` | `<u>underline</u>` |
+        | Paragraphs | |
+        | GFM tables | |
+        """
+        let blocks = MarkdownParser.parse(md)
+        XCTAssertEqual(blocks.count, 1)
+        guard case .table(let columns, let rows) = blocks[0] else {
+            return XCTFail("README support table must parse as table, got \(blocks)")
+        }
+        XCTAssertEqual(columns.count, 2)
+        XCTAssertEqual(columns[0].header, "Blocks")
+        XCTAssertEqual(columns[1].header, "Inlines")
+        XCTAssertGreaterThanOrEqual(rows.count, 7)
+
+        let attr = MarkdownRenderer.render(md)
+        let plain = attr.string
+        XCTAssertTrue(plain.contains("Blocks"))
+        XCTAssertTrue(plain.contains("Inlines"))
+        XCTAssertTrue(plain.contains("ATX headings"))
+        XCTAssertTrue(plain.contains("GFM tables"))
+
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 400))
+        tv.textStorage?.setAttributedString(attr)
+        tv.layoutManager?.ensureLayout(for: tv.textContainer!)
     }
 }
