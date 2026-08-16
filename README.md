@@ -1,11 +1,12 @@
 # MarkdownView
 
-Ultra-lightweight native macOS markdown **editor** with live preview.
+Ultra-lightweight native macOS markdown **viewer and editor** with live preview.
 
-Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled markdown parser renders to `NSAttributedString` in a split-pane layout: editable source on the left, live preview on the right.
+Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled markdown parser renders to `NSAttributedString`. Default layout is a single-pane full-window preview; toggle to a split-pane layout with editable source on the left and live preview on the right.
 
 ## Features
 
+- **Default single-pane preview**; toolbar button or **Cmd+Shift+E** toggles split-pane edit + live preview (mode remembered)
 - **Split-pane editor** — left: plain monospaced markdown source; right: live rendered preview
 - **Live preview** updates as you type
 - **Save** with Cmd+S (atomic write); **Save As…** via Cmd+Shift+S; dirty indicator (`•`) in the window title

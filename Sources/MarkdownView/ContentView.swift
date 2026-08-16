@@ -2,6 +2,21 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum ViewMode: String, Equatable, Sendable {
+    case preview
+    case split
+
+    static let defaultsKey = "viewMode"
+
+    /// Resolve stored preference; missing or invalid → `.preview`.
+    static func resolved(storedRaw: String?) -> ViewMode {
+        guard let storedRaw, let mode = ViewMode(rawValue: storedRaw) else {
+            return .preview
+        }
+        return mode
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var model: DocumentModel
     @AppStorage("splitFraction") private var splitFraction: Double = 0.5
@@ -14,6 +29,42 @@ struct ContentView: View {
     private let fractionMax: Double = 0.70
 
     var body: some View {
+        Group {
+            switch model.viewMode {
+            case .preview:
+                MarkdownTextView(
+                    attributedText: model.attributedText,
+                    onOpenFile: { url in
+                        model.open(url: url)
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .split:
+                splitPaneLayout
+            }
+        }
+        .frame(minWidth: model.viewMode == .split ? 700 : 640, minHeight: 400)
+        .background(Color(nsColor: .textBackgroundColor))
+        .navigationTitle(model.windowTitle)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.toggleViewMode()
+                } label: {
+                    Image(systemName: model.viewMode == .preview ? "square.and.pencil" : "eye")
+                }
+                .help(model.viewMode == .preview ? "Edit" : "Preview")
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleDrop(providers)
+        }
+        .onAppear {
+            model.loadInitialIfNeeded()
+        }
+    }
+
+    private var splitPaneLayout: some View {
         GeometryReader { geo in
             let totalWidth = max(geo.size.width, leftMinWidth + rightMinWidth + dividerWidth)
             let clamped = clampedFraction(for: totalWidth)
@@ -50,15 +101,6 @@ struct ContentView: View {
                     splitFraction = normalized
                 }
             }
-        }
-        .frame(minWidth: 700, minHeight: 400)
-        .background(Color(nsColor: .textBackgroundColor))
-        .navigationTitle(model.windowTitle)
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            handleDrop(providers)
-        }
-        .onAppear {
-            model.loadInitialIfNeeded()
         }
     }
 
@@ -151,6 +193,7 @@ final class DocumentModel: ObservableObject {
     @Published private(set) var rawMarkdown: String = ""
     @Published var fontSize: CGFloat = 14
     @Published private(set) var statusMessage: String?
+    @Published private(set) var viewMode: ViewMode
 
     private let monitor = FileMonitor()
     private var didLoadInitial = false
@@ -171,6 +214,9 @@ final class DocumentModel: ObservableObject {
     }
 
     init(initialPath: String? = nil) {
+        // Load persisted mode before any @Published mutation observers attach.
+        let stored = UserDefaults.standard.string(forKey: ViewMode.defaultsKey)
+        self.viewMode = ViewMode.resolved(storedRaw: stored)
         self.initialPath = initialPath
         renderPlaceholder()
         monitor.onChange = { [weak self] in
@@ -178,6 +224,16 @@ final class DocumentModel: ObservableObject {
                 self?.reloadFromDisk()
             }
         }
+    }
+
+    func setViewMode(_ mode: ViewMode) {
+        guard mode != viewMode else { return }
+        viewMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: ViewMode.defaultsKey)
+    }
+
+    func toggleViewMode() {
+        setViewMode(viewMode == .preview ? .split : .preview)
     }
 
     func loadInitialIfNeeded() {
@@ -378,15 +434,15 @@ final class DocumentModel: ObservableObject {
         let welcome = """
         # MarkdownView
 
-        Ultra-lightweight markdown editor for macOS.
+        Ultra-lightweight markdown viewer and editor for macOS.
 
         **Open a file** with `Cmd+O`, drag & drop onto the window, or pass a path on the command line.
 
-        Edit on the left — live preview updates on the right. Save with `Cmd+S`.
+        Starts in full-window preview. Press the toolbar button or `Cmd+Shift+E` to toggle split-pane edit + live preview. Save with `Cmd+S`.
 
         ## Features
 
-        - Split-pane source + live preview
+        - Default single-pane preview; toggle split-pane source + live preview
         - Headings, blockquotes, lists, code fences
         - *Italic*, **bold**, `code`, ~~strikethrough~~, [links](https://example.com)
         - Live reload when the file changes (skips while dirty)

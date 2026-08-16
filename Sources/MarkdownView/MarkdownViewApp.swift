@@ -69,6 +69,14 @@ struct MarkdownViewApp: App {
                 }
                 .keyboardShortcut("p", modifiers: .command)
             }
+
+            // Cmd+Shift+E (not Cmd+E — that is NSTextView "Use Selection for Find").
+            CommandGroup(after: .sidebar) {
+                Button(model.viewMode == .preview ? "Edit" : "Preview") {
+                    model.toggleViewMode()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
         }
     }
 }
