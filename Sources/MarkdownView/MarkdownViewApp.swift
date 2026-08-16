@@ -23,7 +23,7 @@ struct MarkdownViewApp: App {
         WindowGroup {
             ContentView(model: model)
         }
-        .defaultSize(width: 960, height: 700)
+        .defaultSize(width: 1140, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") {

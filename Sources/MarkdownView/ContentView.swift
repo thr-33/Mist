@@ -4,30 +4,54 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var model: DocumentModel
+    @AppStorage("splitFraction") private var splitFraction: Double = 0.5
+    @State private var dragStartFraction: Double?
+
+    private let dividerWidth: CGFloat = 6
+    private let leftMinWidth: CGFloat = 340
+    private let rightMinWidth: CGFloat = 310
+    private let fractionMin: Double = 0.30
+    private let fractionMax: Double = 0.70
 
     var body: some View {
-        HSplitView {
-            SourceEditorView(
-                text: Binding(
-                    get: { model.rawMarkdown },
-                    set: { model.updateMarkdown($0) }
-                ),
-                fontSize: model.fontSize,
-                onTextChange: { model.updateMarkdown($0) }
-            )
-            .frame(minWidth: 200)
-            .layoutPriority(0.4)
+        GeometryReader { geo in
+            let totalWidth = max(geo.size.width, leftMinWidth + rightMinWidth + dividerWidth)
+            let clamped = clampedFraction(for: totalWidth)
+            let leftWidth = leftPaneWidth(totalWidth: totalWidth, fraction: clamped)
 
-            MarkdownTextView(
-                attributedText: model.attributedText,
-                onOpenFile: { url in
-                    model.open(url: url)
+            HStack(spacing: 0) {
+                SourceEditorView(
+                    text: Binding(
+                        get: { model.rawMarkdown },
+                        set: { model.updateMarkdown($0) }
+                    ),
+                    fontSize: model.fontSize,
+                    onTextChange: { model.updateMarkdown($0) }
+                )
+                .frame(width: leftWidth)
+                .frame(maxHeight: .infinity)
+
+                splitDivider(totalWidth: totalWidth)
+
+                MarkdownTextView(
+                    attributedText: model.attributedText,
+                    onOpenFile: { url in
+                        model.open(url: url)
+                    }
+                )
+                .frame(minWidth: rightMinWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+            .onAppear {
+                // Normalize any out-of-range stored value once geometry is known.
+                let normalized = clampedFraction(for: totalWidth)
+                if abs(normalized - splitFraction) > 0.0001 {
+                    splitFraction = normalized
                 }
-            )
-            .frame(minWidth: 240)
-            .layoutPriority(0.6)
+            }
         }
-        .frame(minWidth: 640, minHeight: 360)
+        .frame(minWidth: 700, minHeight: 400)
         .background(Color(nsColor: .textBackgroundColor))
         .navigationTitle(model.windowTitle)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -36,6 +60,64 @@ struct ContentView: View {
         .onAppear {
             model.loadInitialIfNeeded()
         }
+    }
+
+    private func splitDivider(totalWidth: CGFloat) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 1)
+            Color.clear
+                .frame(width: dividerWidth)
+                .contentShape(Rectangle())
+        }
+        .frame(width: dividerWidth)
+        .frame(maxHeight: .infinity)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if dragStartFraction == nil {
+                        dragStartFraction = splitFraction
+                    }
+                    let start = dragStartFraction ?? splitFraction
+                    let startLeft = leftPaneWidth(totalWidth: totalWidth, fraction: start)
+                    let proposedLeft = startLeft + value.translation.width
+                    let usable = totalWidth - dividerWidth
+                    guard usable > 0 else { return }
+                    let raw = Double(proposedLeft / usable)
+                    splitFraction = clampedFraction(for: totalWidth, proposed: raw)
+                }
+                .onEnded { _ in
+                    dragStartFraction = nil
+                }
+        )
+        .onHover { hovering in
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+
+    private func leftPaneWidth(totalWidth: CGFloat, fraction: Double) -> CGFloat {
+        let usable = totalWidth - dividerWidth
+        let ideal = CGFloat(fraction) * usable
+        let maxLeft = usable - rightMinWidth
+        return min(max(ideal, leftMinWidth), max(maxLeft, leftMinWidth))
+    }
+
+    private func clampedFraction(for totalWidth: CGFloat, proposed: Double? = nil) -> Double {
+        let usable = totalWidth - dividerWidth
+        guard usable > 0 else {
+            return min(max(proposed ?? splitFraction, fractionMin), fractionMax)
+        }
+        let minF = max(fractionMin, Double(leftMinWidth / usable))
+        let maxF = min(fractionMax, Double((usable - rightMinWidth) / usable))
+        let lower = min(minF, maxF)
+        let upper = max(minF, maxF)
+        let value = proposed ?? splitFraction
+        return min(max(value, lower), upper)
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
