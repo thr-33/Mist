@@ -2,6 +2,44 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Observes `NSApp.effectiveAppearance` and invokes `onChange` when light/dark flips.
+private struct AppearanceObserver: NSViewRepresentable {
+    var onChange: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = AppearanceView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? AppearanceView)?.onChange = onChange
+    }
+
+    private final class AppearanceView: NSView {
+        var onChange: (() -> Void)?
+        private var lastDark: Bool?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            checkAppearance()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            checkAppearance()
+        }
+
+        private func checkAppearance() {
+            let dark = Kami.isDark
+            if lastDark != dark {
+                lastDark = dark
+                onChange?()
+            }
+        }
+    }
+}
+
 enum ViewMode: String, Equatable, Sendable {
     case preview
     case split
@@ -44,7 +82,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: model.viewMode == .split ? 700 : 640, minHeight: 400)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: Kami.pageBackground))
         .navigationTitle(model.windowTitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -62,6 +100,7 @@ struct ContentView: View {
         .onAppear {
             model.loadInitialIfNeeded()
         }
+        .background(AppearanceObserver { model.refreshStyleForAppearance() })
     }
 
     private var splitPaneLayout: some View {
@@ -107,7 +146,7 @@ struct ContentView: View {
     private func splitDivider(totalWidth: CGFloat) -> some View {
         ZStack {
             Rectangle()
-                .fill(Color(nsColor: .separatorColor))
+                .fill(Color(nsColor: Kami.divider))
                 .frame(width: 1)
             Color.clear
                 .frame(width: dividerWidth)
@@ -423,6 +462,11 @@ final class DocumentModel: ObservableObject {
             guard !Task.isCancelled else { return }
             recompute()
         }
+    }
+
+    /// Re-render when light/dark appearance flips so Kami palette tokens refresh.
+    func refreshStyleForAppearance() {
+        recompute()
     }
 
     private func recompute() {

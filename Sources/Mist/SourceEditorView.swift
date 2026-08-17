@@ -22,7 +22,7 @@ struct SourceEditorView: NSViewRepresentable {
         textView.isRichText = false
         textView.allowsUndo = true
         textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = Kami.editorBackground
         textView.textContainerInset = NSSize(width: 16, height: 16)
         // Soft-wrap markdown prose to the pane width.
         textView.isHorizontallyResizable = false
@@ -36,8 +36,9 @@ struct SourceEditorView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        textView.textColor = .labelColor
+        textView.font = Kami.monoFont(ofSize: fontSize)
+        textView.textColor = Kami.primaryText
+        textView.insertionPointColor = Kami.accent
         textView.string = text
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
@@ -48,7 +49,7 @@ struct SourceEditorView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.backgroundColor = Kami.editorBackground
 
         return scrollView
     }
@@ -59,10 +60,17 @@ struct SourceEditorView: NSViewRepresentable {
         context.coordinator.isUpdating = true
         defer { context.coordinator.isUpdating = false }
 
-        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        let font = Kami.monoFont(ofSize: fontSize)
         if textView.font != font {
             textView.font = font
         }
+
+        // Keep warm ivory / charcoal in sync with appearance changes
+        let editorBg = Kami.editorBackground
+        textView.backgroundColor = editorBg
+        scrollView.backgroundColor = editorBg
+        textView.textColor = Kami.primaryText
+        textView.insertionPointColor = Kami.accent
 
         // Avoid clobbering in-progress typing / selection when text matches.
         if textView.string != text {

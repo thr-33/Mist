@@ -1,7 +1,136 @@
 import AppKit
 import Foundation
 
-/// Renders parsed markdown blocks into an `NSAttributedString` using semantic colors.
+// MARK: - Kami warm paper palette
+
+/// Kami (紙) warm parchment palette — programmatic NSColors, no asset catalog.
+public enum Kami {
+    // Light surfaces
+    public static let parchment = NSColor(srgbRed: 0xF5 / 255, green: 0xF4 / 255, blue: 0xED / 255, alpha: 1)
+    public static let ivory = NSColor(srgbRed: 0xFA / 255, green: 0xF9 / 255, blue: 0xF5 / 255, alpha: 1)
+    // Text (warm olive undertones)
+    public static let nearBlack = NSColor(srgbRed: 0x14 / 255, green: 0x14 / 255, blue: 0x13 / 255, alpha: 1)
+    public static let darkWarm = NSColor(srgbRed: 0x3D / 255, green: 0x3D / 255, blue: 0x3A / 255, alpha: 1)
+    public static let olive = NSColor(srgbRed: 0x50 / 255, green: 0x4E / 255, blue: 0x49 / 255, alpha: 1)
+    public static let stone = NSColor(srgbRed: 0x6B / 255, green: 0x6A / 255, blue: 0x64 / 255, alpha: 1)
+    // Accent
+    public static let brand = NSColor(srgbRed: 0x1B / 255, green: 0x36 / 255, blue: 0x5D / 255, alpha: 1)
+    public static let brandLight = NSColor(srgbRed: 0x2D / 255, green: 0x5A / 255, blue: 0x8A / 255, alpha: 1)
+    // Borders
+    public static let border = NSColor(srgbRed: 0xE8 / 255, green: 0xE6 / 255, blue: 0xDC / 255, alpha: 1)
+    public static let borderSoft = NSColor(srgbRed: 0xE5 / 255, green: 0xE3 / 255, blue: 0xD8 / 255, alpha: 1)
+    // Dark mode surfaces
+    public static let darkSurface = NSColor(srgbRed: 0x30 / 255, green: 0x30 / 255, blue: 0x2E / 255, alpha: 1)
+    public static let deepDark = NSColor(srgbRed: 0x14 / 255, green: 0x14 / 255, blue: 0x13 / 255, alpha: 1)
+    public static let darkIvory = NSColor(srgbRed: 0x3A / 255, green: 0x3A / 255, blue: 0x37 / 255, alpha: 1)
+    // Dark mode text
+    public static let darkPrimary = NSColor(srgbRed: 0xF5 / 255, green: 0xF4 / 255, blue: 0xED / 255, alpha: 1)
+    public static let darkSecondary = NSColor(srgbRed: 0xC8 / 255, green: 0xC6 / 255, blue: 0xB8 / 255, alpha: 1)
+    public static let darkTertiary = NSColor(srgbRed: 0x9A / 255, green: 0x98 / 255, blue: 0x8C / 255, alpha: 1)
+
+    /// True when the current drawing appearance is dark.
+    /// Uses `NSAppearance.currentDrawing()` so callers need not be on the main actor
+    /// (tests and background render paths stay nonisolated-safe).
+    public static var isDark: Bool {
+        let appearance = NSAppearance.currentDrawing()
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    /// Page / preview background (parchment ↔ warm charcoal).
+    public static var pageBackground: NSColor {
+        isDark ? darkSurface : parchment
+    }
+
+    /// Source editor background — ivory in light, slightly deeper charcoal in dark.
+    public static var editorBackground: NSColor {
+        isDark ? deepDark : ivory
+    }
+
+    /// Lifted card / code-block fill.
+    public static var codeFill: NSColor {
+        isDark ? darkIvory : ivory
+    }
+
+    /// Primary body text.
+    public static var primaryText: NSColor {
+        isDark ? darkPrimary : nearBlack
+    }
+
+    /// Secondary text (table headers, secondary labels).
+    public static var secondaryText: NSColor {
+        isDark ? darkSecondary : darkWarm
+    }
+
+    /// Subtext / blockquote body.
+    public static var subtext: NSColor {
+        isDark ? darkTertiary : olive
+    }
+
+    /// Metadata / tertiary.
+    public static var tertiaryText: NSColor {
+        isDark ? darkTertiary : stone
+    }
+
+    /// Ink-blue accent (links, markers, kick-lines). Brighter on dark surfaces.
+    public static var accent: NSColor {
+        isDark ? brandLight : brand
+    }
+
+    /// Dividers / table borders.
+    public static var divider: NSColor {
+        isDark ? NSColor(srgbRed: 0x4A / 255, green: 0x4A / 255, blue: 0x46 / 255, alpha: 1) : border
+    }
+
+    // MARK: Fonts
+
+    /// Serif body/heading family: Charter → Palatino → Georgia → system.
+    public static func serifFont(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let candidates = ["Charter", "Palatino", "Georgia"]
+        for name in candidates {
+            if let base = NSFont(name: name, size: size) {
+                let manager = NSFontManager.shared
+                let traits: NSFontTraitMask = weight >= .semibold ? .boldFontMask : []
+                if let converted = manager.font(
+                    withFamily: base.familyName ?? name,
+                    traits: traits,
+                    weight: weightValue(weight),
+                    size: size
+                ) {
+                    return converted
+                }
+                return base
+            }
+        }
+        return NSFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    /// Monospace: JetBrains Mono → system monospaced.
+    public static func monoFont(ofSize size: CGFloat) -> NSFont {
+        if let font = NSFont(name: "JetBrains Mono", size: size)
+            ?? NSFont(name: "JetBrainsMono-Regular", size: size) {
+            return font
+        }
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    /// NSFontManager weight scale (0…15); 5 ≈ regular, 6 ≈ medium/semibold-ish.
+    private static func weightValue(_ weight: NSFont.Weight) -> Int {
+        switch weight {
+        case .ultraLight: return 1
+        case .thin: return 2
+        case .light: return 3
+        case .regular: return 5
+        case .medium: return 6
+        case .semibold: return 7
+        case .bold: return 8
+        case .heavy: return 9
+        case .black: return 10
+        default: return 5
+        }
+    }
+}
+
+/// Renders parsed markdown blocks into an `NSAttributedString` using Kami warm paper styling.
 public enum MarkdownRenderer {
 
     public struct Style {
@@ -12,16 +141,27 @@ public enum MarkdownRenderer {
         public var secondaryColor: NSColor
         public var codeBackground: NSColor
         public var linkColor: NSColor
+        public var brandColor: NSColor
+        public var oliveColor: NSColor
+        public var stoneColor: NSColor
+        public var borderColor: NSColor
+        public var bodyLineHeight: CGFloat
+        public var headingLineHeight: CGFloat
 
         public init(baseFontSize: CGFloat = 14) {
             self.baseFontSize = baseFontSize
-            self.bodyFont = NSFont.systemFont(ofSize: baseFontSize)
-            self.monoFont = NSFont.monospacedSystemFont(ofSize: baseFontSize * 0.92, weight: .regular)
-            self.textColor = .labelColor
-            self.secondaryColor = .secondaryLabelColor
-            self.codeBackground = NSColor.textBackgroundColor.blended(withFraction: 0.08, of: .labelColor)
-                ?? NSColor.controlBackgroundColor
-            self.linkColor = .linkColor
+            self.bodyFont = Kami.serifFont(ofSize: baseFontSize, weight: .regular)
+            self.monoFont = Kami.monoFont(ofSize: baseFontSize * 0.92)
+            self.textColor = Kami.primaryText
+            self.secondaryColor = Kami.secondaryText
+            self.codeBackground = Kami.codeFill
+            self.linkColor = Kami.accent
+            self.brandColor = Kami.accent
+            self.oliveColor = Kami.subtext
+            self.stoneColor = Kami.tertiaryText
+            self.borderColor = Kami.divider
+            self.bodyLineHeight = 1.55
+            self.headingLineHeight = 1.15
         }
 
         public func withFontSize(_ size: CGFloat) -> Style {
@@ -55,7 +195,11 @@ public enum MarkdownRenderer {
             return renderHeading(level: level, text: text, style: style, isLast: isLast)
 
         case .paragraph(let text):
-            return renderInlines(text, font: style.bodyFont, color: style.textColor, style: style)
+            let result = NSMutableAttributedString(
+                attributedString: renderInlines(text, font: style.bodyFont, color: style.textColor, style: style)
+            )
+            applyBodyParagraphStyle(to: result, style: style)
+            return result
 
         case .blockquote(let children):
             let inner = NSMutableAttributedString()
@@ -66,16 +210,29 @@ public enum MarkdownRenderer {
                 }
             }
             let range = NSRange(location: 0, length: inner.length)
-            inner.addAttribute(.foregroundColor, value: style.secondaryColor, range: range)
+            // Olive body text + brand-colored left bar via leading "│ " marker
+            if inner.length > 0 {
+                inner.addAttribute(.foregroundColor, value: style.oliveColor, range: range)
+            }
+            let barAttrs: [NSAttributedString.Key: Any] = [
+                .font: style.bodyFont,
+                .foregroundColor: style.brandColor,
+            ]
+            let withBar = NSMutableAttributedString(string: "│ ", attributes: barAttrs)
+            withBar.append(inner)
+            let fullRange = NSRange(location: 0, length: withBar.length)
             let para = NSMutableParagraphStyle()
-            para.firstLineHeadIndent = 12
-            para.headIndent = 12
-            inner.addAttribute(.paragraphStyle, value: para, range: range)
-            return inner
+            para.firstLineHeadIndent = 4
+            para.headIndent = 16
+            para.lineHeightMultiple = style.bodyLineHeight
+            withBar.addAttribute(.paragraphStyle, value: para, range: fullRange)
+            return withBar
 
         case .codeBlock(_, let code):
             let para = NSMutableParagraphStyle()
             para.lineHeightMultiple = 1.15
+            para.paragraphSpacingBefore = 4
+            para.paragraphSpacing = 4
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: style.monoFont,
                 .foregroundColor: style.textColor,
@@ -87,34 +244,62 @@ public enum MarkdownRenderer {
 
         case .unorderedList(let items):
             let result = NSMutableAttributedString()
+            let markerAttrs: [NSAttributedString.Key: Any] = [
+                .font: style.bodyFont,
+                .foregroundColor: style.brandColor,
+            ]
+            let bodyPara = bodyParagraphStyle(style)
+            bodyPara.headIndent = 16
+            bodyPara.firstLineHeadIndent = 0
             for (i, item) in items.enumerated() {
-                let bullet = NSAttributedString(string: "• ", attributes: baseAttrs(style))
+                let bullet = NSAttributedString(string: "• ", attributes: markerAttrs)
                 result.append(bullet)
-                result.append(renderInlines(item, font: style.bodyFont, color: style.textColor, style: style))
+                let body = renderInlines(item, font: style.bodyFont, color: style.textColor, style: style)
+                result.append(body)
                 if i < items.count - 1 {
                     result.append(NSAttributedString(string: "\n", attributes: baseAttrs(style)))
                 }
+            }
+            if result.length > 0 {
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: bodyPara,
+                    range: NSRange(location: 0, length: result.length)
+                )
             }
             return result
 
         case .orderedList(let items):
             let result = NSMutableAttributedString()
+            let markerAttrs: [NSAttributedString.Key: Any] = [
+                .font: style.bodyFont,
+                .foregroundColor: style.brandColor,
+            ]
+            let bodyPara = bodyParagraphStyle(style)
+            bodyPara.headIndent = 20
+            bodyPara.firstLineHeadIndent = 0
             for (i, item) in items.enumerated() {
-                let prefix = NSAttributedString(string: "\(i + 1). ", attributes: baseAttrs(style))
+                let prefix = NSAttributedString(string: "\(i + 1). ", attributes: markerAttrs)
                 result.append(prefix)
                 result.append(renderInlines(item, font: style.bodyFont, color: style.textColor, style: style))
                 if i < items.count - 1 {
                     result.append(NSAttributedString(string: "\n", attributes: baseAttrs(style)))
                 }
             }
+            if result.length > 0 {
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: bodyPara,
+                    range: NSRange(location: 0, length: result.length)
+                )
+            }
             return result
 
         case .thematicBreak:
-            // Lighter than H1/H2 kick-lines — reduced weight via smaller font + translucent secondary color
-            let breakFont = NSFont.systemFont(ofSize: style.baseFontSize * 0.8)
-            let breakColor = style.secondaryColor.withAlphaComponent(0.35)
+            // Warm stone hairline — not cool secondaryLabel gray
+            let breakColor = style.stoneColor.withAlphaComponent(0.35)
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: breakFont,
+                .font: Kami.serifFont(ofSize: style.baseFontSize * 0.8, weight: .regular),
                 .foregroundColor: breakColor,
             ]
             return NSAttributedString(string: "────────────", attributes: attrs)
@@ -142,7 +327,8 @@ public enum MarkdownRenderer {
             default: return style.baseFontSize
             }
         }()
-        let font = NSFont.systemFont(ofSize: size, weight: .bold)
+        // Weight 500 (semibold) serif — Kami locks serif headings at 500, not bold 700
+        let font = Kami.serifFont(ofSize: size, weight: .semibold)
 
         let spacingBefore: CGFloat
         let spacingAfter: CGFloat
@@ -165,6 +351,7 @@ public enum MarkdownRenderer {
         let headingPara = NSMutableParagraphStyle()
         headingPara.paragraphSpacingBefore = spacingBefore
         headingPara.paragraphSpacing = headingAfter
+        headingPara.lineHeightMultiple = style.headingLineHeight
 
         let heading = NSMutableAttributedString(
             attributedString: renderInlines(text, font: font, color: style.textColor, style: style)
@@ -188,8 +375,9 @@ public enum MarkdownRenderer {
 
         let ruleLength: CGFloat = level == 1 ? 58 : 34
         let ruleHeight: CGFloat = level == 1 ? 2.25 : 1.75
-        let ruleAlpha: CGFloat = level == 1 ? 0.50 : 0.35
-        let ruleColor = style.secondaryColor.withAlphaComponent(ruleAlpha)
+        // Brand ink-blue at low alpha (was cool secondaryColor)
+        let ruleAlpha: CGFloat = level == 1 ? 0.45 : 0.30
+        let ruleColor = style.brandColor.withAlphaComponent(ruleAlpha)
 
         let rule = hairlineRule(
             length: ruleLength,
@@ -262,12 +450,12 @@ public enum MarkdownRenderer {
         let table = NSTextTable()
         table.numberOfColumns = colCount
         table.collapsesBorders = true
-        table.setBorderColor(NSColor.separatorColor)
-        // Border width applied per cell block below
+        table.setBorderColor(style.borderColor)
         table.layoutAlgorithm = .automaticLayoutAlgorithm
 
         let result = NSMutableAttributedString()
-        let boldHeaderFont = NSFontManager.shared.convert(style.bodyFont, toHaveTrait: .boldFontMask)
+        // Weight 500 serif for headers (not synthetic bold 700)
+        let headerFont = Kami.serifFont(ofSize: style.baseFontSize, weight: .semibold)
 
         // Header row
         if columns.isEmpty {
@@ -279,7 +467,8 @@ public enum MarkdownRenderer {
                 column: 0,
                 columnCount: 1,
                 alignment: .left,
-                font: boldHeaderFont,
+                font: headerFont,
+                color: style.secondaryColor,
                 style: style
             )
         } else {
@@ -292,7 +481,8 @@ public enum MarkdownRenderer {
                     column: col,
                     columnCount: colCount,
                     alignment: column.alignment,
-                    font: boldHeaderFont,
+                    font: headerFont,
+                    color: style.secondaryColor,
                     style: style
                 )
             }
@@ -312,6 +502,7 @@ public enum MarkdownRenderer {
                     columnCount: colCount,
                     alignment: align,
                     font: style.bodyFont,
+                    color: style.textColor,
                     style: style
                 )
             }
@@ -331,10 +522,11 @@ public enum MarkdownRenderer {
         columnCount: Int,
         alignment: TableAlignment,
         font: NSFont,
+        color: NSColor,
         style: Style
     ) {
         let block = NSTextTableBlock(table: table, startingRow: row, rowSpan: 1, startingColumn: column, columnSpan: 1)
-        block.setBorderColor(NSColor.separatorColor)
+        block.setBorderColor(style.borderColor)
         block.setWidth(0.5, type: .absoluteValueType, for: .border)
         block.setWidth(6, type: .absoluteValueType, for: .padding)
         // Equal percentage widths keep columns aligned
@@ -351,18 +543,18 @@ public enum MarkdownRenderer {
 
         // NBSP keeps empty cells from collapsing during layout
         let display = text.isEmpty ? "\u{00A0}" : text
-        let cellContent = renderInlines(display, font: font, color: style.textColor, style: style)
+        let cellContent = renderInlines(display, font: font, color: color, style: style)
         let mutable = NSMutableAttributedString(attributedString: cellContent)
         if mutable.length == 0 {
             mutable.append(NSAttributedString(string: "\u{00A0}", attributes: [
                 .font: font,
-                .foregroundColor: style.textColor,
+                .foregroundColor: color,
             ]))
         }
         // Terminate cell paragraph with \n so NSTextView assembles contiguous table cells
         mutable.append(NSAttributedString(string: "\n", attributes: [
             .font: font,
-            .foregroundColor: style.textColor,
+            .foregroundColor: color,
         ]))
         let range = NSRange(location: 0, length: mutable.length)
         mutable.addAttribute(.paragraphStyle, value: para, range: range)
@@ -400,7 +592,8 @@ public enum MarkdownRenderer {
             ])
 
         case .bold(let s):
-            let bold = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+            // Kami locks strong at weight 500 (not synthetic 700)
+            let bold = Kami.serifFont(ofSize: font.pointSize, weight: .semibold)
             return NSAttributedString(string: s, attributes: [
                 .font: bold,
                 .foregroundColor: color,
@@ -443,6 +636,23 @@ public enum MarkdownRenderer {
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
             ])
         }
+    }
+
+    // MARK: - Paragraph helpers
+
+    private static func bodyParagraphStyle(_ style: Style) -> NSMutableParagraphStyle {
+        let para = NSMutableParagraphStyle()
+        para.lineHeightMultiple = style.bodyLineHeight
+        return para
+    }
+
+    private static func applyBodyParagraphStyle(to result: NSMutableAttributedString, style: Style) {
+        guard result.length > 0 else { return }
+        result.addAttribute(
+            .paragraphStyle,
+            value: bodyParagraphStyle(style),
+            range: NSRange(location: 0, length: result.length)
+        )
     }
 
     private static func baseAttrs(_ style: Style) -> [NSAttributedString.Key: Any] {
