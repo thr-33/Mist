@@ -37,9 +37,10 @@ public enum MarkdownRenderer {
     public static func render(blocks: [BlockNode], style: Style = Style()) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for (index, block) in blocks.enumerated() {
-            let piece = renderBlock(block, style: style)
+            let isLast = index == blocks.count - 1
+            let piece = renderBlock(block, style: style, isLast: isLast)
             result.append(piece)
-            if index < blocks.count - 1 {
+            if !isLast {
                 result.append(NSAttributedString(string: "\n\n", attributes: baseAttrs(style)))
             }
         }
@@ -48,21 +49,10 @@ public enum MarkdownRenderer {
 
     // MARK: - Blocks
 
-    private static func renderBlock(_ block: BlockNode, style: Style) -> NSAttributedString {
+    private static func renderBlock(_ block: BlockNode, style: Style, isLast: Bool = false) -> NSAttributedString {
         switch block {
         case .heading(let level, let text):
-            let size: CGFloat = {
-                switch level {
-                case 1: return style.baseFontSize * 2.0
-                case 2: return style.baseFontSize * 1.6
-                case 3: return style.baseFontSize * 1.35
-                case 4: return style.baseFontSize * 1.15
-                case 5: return style.baseFontSize * 1.05
-                default: return style.baseFontSize
-                }
-            }()
-            let font = NSFont.systemFont(ofSize: size, weight: .bold)
-            return renderInlines(text, font: font, color: style.textColor, style: style)
+            return renderHeading(level: level, text: text, style: style, isLast: isLast)
 
         case .paragraph(let text):
             return renderInlines(text, font: style.bodyFont, color: style.textColor, style: style)
@@ -70,7 +60,7 @@ public enum MarkdownRenderer {
         case .blockquote(let children):
             let inner = NSMutableAttributedString()
             for (i, child) in children.enumerated() {
-                inner.append(renderBlock(child, style: style))
+                inner.append(renderBlock(child, style: style, isLast: false))
                 if i < children.count - 1 {
                     inner.append(NSAttributedString(string: "\n", attributes: baseAttrs(style)))
                 }
@@ -120,15 +110,145 @@ public enum MarkdownRenderer {
             return result
 
         case .thematicBreak:
+            // Lighter than H1/H2 kick-lines — reduced weight via smaller font + translucent secondary color
+            let breakFont = NSFont.systemFont(ofSize: style.baseFontSize * 0.8)
+            let breakColor = style.secondaryColor.withAlphaComponent(0.35)
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: style.bodyFont,
-                .foregroundColor: style.secondaryColor,
+                .font: breakFont,
+                .foregroundColor: breakColor,
             ]
             return NSAttributedString(string: "────────────", attributes: attrs)
 
         case .table(let columns, let rows):
             return renderTable(columns: columns, rows: rows, style: style)
         }
+    }
+
+    // MARK: - Headings
+
+    private static func renderHeading(
+        level: Int,
+        text: String,
+        style: Style,
+        isLast: Bool
+    ) -> NSAttributedString {
+        let size: CGFloat = {
+            switch level {
+            case 1: return style.baseFontSize * 2.0
+            case 2: return style.baseFontSize * 1.6
+            case 3: return style.baseFontSize * 1.35
+            case 4: return style.baseFontSize * 1.15
+            case 5: return style.baseFontSize * 1.05
+            default: return style.baseFontSize
+            }
+        }()
+        let font = NSFont.systemFont(ofSize: size, weight: .bold)
+
+        let spacingBefore: CGFloat
+        let spacingAfter: CGFloat
+        switch level {
+        case 1:
+            spacingBefore = 20
+            spacingAfter = 6
+        case 2:
+            spacingBefore = 16
+            spacingAfter = 5
+        default:
+            spacingBefore = 10
+            spacingAfter = 3
+        }
+
+        // When a kick-line follows, keep heading→rule gap tight
+        let wantsRule = (level == 1 || level == 2) && !isLast
+        let headingAfter: CGFloat = wantsRule ? 1 : spacingAfter
+
+        let headingPara = NSMutableParagraphStyle()
+        headingPara.paragraphSpacingBefore = spacingBefore
+        headingPara.paragraphSpacing = headingAfter
+
+        let heading = NSMutableAttributedString(
+            attributedString: renderInlines(text, font: font, color: style.textColor, style: style)
+        )
+        if heading.length > 0 {
+            heading.addAttribute(
+                .paragraphStyle,
+                value: headingPara,
+                range: NSRange(location: 0, length: heading.length)
+            )
+        }
+
+        guard wantsRule else { return heading }
+
+        let result = NSMutableAttributedString(attributedString: heading)
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .font: font,
+            .foregroundColor: style.textColor,
+            .paragraphStyle: headingPara,
+        ]))
+
+        let ruleLength: CGFloat = level == 1 ? 58 : 34
+        let ruleHeight: CGFloat = level == 1 ? 2.25 : 1.75
+        let ruleAlpha: CGFloat = level == 1 ? 0.50 : 0.35
+        let ruleColor = style.secondaryColor.withAlphaComponent(ruleAlpha)
+
+        let rule = hairlineRule(
+            length: ruleLength,
+            height: ruleHeight,
+            color: ruleColor,
+            paragraphSpacingAfter: spacingAfter,
+            style: style
+        )
+        result.append(rule)
+        return result
+    }
+
+    /// Drawn hairline rule as an `NSTextAttachment` (not text dashes).
+    private static func hairlineRule(
+        length: CGFloat,
+        height: CGFloat,
+        color: NSColor,
+        paragraphSpacingAfter: CGFloat,
+        style: Style
+    ) -> NSAttributedString {
+        let image = drawHairlineImage(length: length, height: height, color: color)
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Bounds: origin y slightly below baseline so the line sits under the heading
+        attachment.bounds = CGRect(x: 0, y: 0, width: length, height: height)
+
+        let rulePara = NSMutableParagraphStyle()
+        rulePara.alignment = .left
+        rulePara.paragraphSpacingBefore = 0
+        rulePara.paragraphSpacing = paragraphSpacingAfter
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .paragraphStyle: rulePara,
+            .font: style.bodyFont,
+            .foregroundColor: color,
+        ]
+        result.addAttributes(attrs, range: NSRange(location: 0, length: result.length))
+        result.append(NSAttributedString(string: "\n", attributes: attrs))
+        return result
+    }
+
+    /// 1×-scale bitmap of a filled rectangle tinted with `color`.
+    private static func drawHairlineImage(length: CGFloat, height: CGFloat, color: NSColor) -> NSImage {
+        let pixelW = max(1, Int(ceil(length)))
+        let pixelH = max(1, Int(ceil(height)))
+        let size = NSSize(width: CGFloat(pixelW), height: CGFloat(pixelH))
+
+        let image = NSImage(size: size)
+        image.lockFocus()
+        if let ctx = NSGraphicsContext.current?.cgContext {
+            ctx.setFillColor(color.cgColor)
+            ctx.fill(CGRect(origin: .zero, size: size))
+        } else {
+            color.setFill()
+            NSBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
+        }
+        image.unlockFocus()
+        return image
     }
 
     // MARK: - Tables

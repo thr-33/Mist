@@ -330,6 +330,98 @@ final class MarkdownParserTests: XCTestCase {
         }
     }
 
+    // MARK: - Section separation (kick-lines & spacing)
+
+    @MainActor
+    func testH1RenderHasKickLineAndDoubleSizeFont() {
+        let md = "# Title\n\nBody paragraph."
+        let style = MarkdownRenderer.Style(baseFontSize: 14)
+        let attr = MarkdownRenderer.render(md, style: style)
+        let plain = attr.string
+
+        // Attachment character marks the drawn hairline rule
+        XCTAssertTrue(plain.contains("\u{FFFC}"), "H1 should include NSTextAttachment kick-line")
+
+        // Heading font at 2× base
+        let ns = plain as NSString
+        let titleRange = ns.range(of: "Title")
+        XCTAssertNotEqual(titleRange.location, NSNotFound)
+        var effective = NSRange()
+        if let font = attr.attribute(.font, at: titleRange.location, effectiveRange: &effective) as? NSFont {
+            XCTAssertEqual(font.pointSize, 28, accuracy: 0.5, "H1 font should be 2× base (28)")
+        } else {
+            XCTFail("expected font on H1 text")
+        }
+
+        // Attachment present somewhere after the heading text
+        let attachRange = ns.range(of: "\u{FFFC}")
+        XCTAssertNotEqual(attachRange.location, NSNotFound)
+        XCTAssertGreaterThan(attachRange.location, titleRange.location)
+        let attrs = attr.attributes(at: attachRange.location, effectiveRange: &effective)
+        XCTAssertNotNil(attrs[.attachment], "kick-line should be an NSTextAttachment")
+    }
+
+    @MainActor
+    func testH2RenderHasKickLineAnd1_6SizeFont() {
+        let md = "## Section\n\nBody."
+        let style = MarkdownRenderer.Style(baseFontSize: 14)
+        let attr = MarkdownRenderer.render(md, style: style)
+        let plain = attr.string
+
+        XCTAssertTrue(plain.contains("\u{FFFC}"), "H2 should include NSTextAttachment kick-line")
+
+        let ns = plain as NSString
+        let range = ns.range(of: "Section")
+        XCTAssertNotEqual(range.location, NSNotFound)
+        var effective = NSRange()
+        if let font = attr.attribute(.font, at: range.location, effectiveRange: &effective) as? NSFont {
+            XCTAssertEqual(font.pointSize, 22.4, accuracy: 0.5, "H2 font should be 1.6× base (22.4)")
+        } else {
+            XCTFail("expected font on H2 text")
+        }
+    }
+
+    @MainActor
+    func testLastHeadingOmitsTrailingKickLine() {
+        // Heading is the only / last block — no trailing rule
+        let attr = MarkdownRenderer.render("# Solo")
+        let plain = attr.string
+        XCTAssertTrue(plain.contains("Solo"))
+        XCTAssertFalse(
+            plain.contains("\u{FFFC}"),
+            "last-block heading must not have a trailing kick-line"
+        )
+
+        // Heading followed by more content still gets a rule
+        let withBody = MarkdownRenderer.render("# Lead\n\npara")
+        XCTAssertTrue(withBody.string.contains("\u{FFFC}"))
+
+        // H3 never gets a rule
+        let h3 = MarkdownRenderer.render("### Sub\n\nbody")
+        XCTAssertFalse(h3.string.contains("\u{FFFC}"), "H3 should not have a kick-line")
+    }
+
+    @MainActor
+    func testThematicBreakIsLighter() {
+        let style = MarkdownRenderer.Style(baseFontSize: 14)
+        let attr = MarkdownRenderer.render("---", style: style)
+        let plain = attr.string
+        XCTAssertTrue(plain.contains("─"), "thematic break should still use box-drawing runs")
+
+        var effective = NSRange()
+        guard let color = attr.attribute(.foregroundColor, at: 0, effectiveRange: &effective) as? NSColor else {
+            return XCTFail("expected foregroundColor on thematic break")
+        }
+        // Resolve to sRGB components for a stable alpha read
+        let resolved = color.usingColorSpace(.sRGB) ?? color
+        XCTAssertLessThan(resolved.alphaComponent, 1.0, "thematic break color should be translucent")
+        XCTAssertGreaterThan(resolved.alphaComponent, 0.0)
+
+        if let font = attr.attribute(.font, at: 0, effectiveRange: &effective) as? NSFont {
+            XCTAssertLessThan(font.pointSize, style.baseFontSize, "break font should be smaller than body")
+        }
+    }
+
     @MainActor
     func testReadmeSupportTableRenders() {
         // Exact structure from README "### Markdown support" table

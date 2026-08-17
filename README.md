@@ -18,6 +18,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 - Text selection, copy, and Cmd+F find (native NSTextView)
 - Dark mode via semantic system colors
 - **GFM tables** (pipe tables with alignment) render as native `NSTextTable` in the preview
+- **Elegant section separation** — hairline kick-lines under H1/H2, breathing heading spacing, and light thematic dividers
 
 ### Markdown support
 
