@@ -1,5 +1,5 @@
 import XCTest
-@testable import MarkdownView
+@testable import Mist
 
 final class ViewModeTests: XCTestCase {
 

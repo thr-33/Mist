@@ -432,7 +432,7 @@ final class DocumentModel: ObservableObject {
 
     private func renderPlaceholder() {
         let welcome = """
-        # MarkdownView
+        # Mist
 
         Ultra-lightweight markdown viewer and editor for macOS.
 

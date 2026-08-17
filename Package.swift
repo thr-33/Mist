@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "MarkdownView",
+    name: "Mist",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "MarkdownView",
-            path: "Sources/MarkdownView"
+            name: "Mist",
+            path: "Sources/Mist"
         ),
         .testTarget(
-            name: "MarkdownViewTests",
-            dependencies: ["MarkdownView"],
-            path: "Tests/MarkdownViewTests"
+            name: "MistTests",
+            dependencies: ["Mist"],
+            path: "Tests/MistTests"
         ),
     ]
 )

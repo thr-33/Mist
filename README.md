@@ -1,4 +1,4 @@
-# MarkdownView
+# Mist
 
 Ultra-lightweight native macOS markdown **viewer and editor** with live preview.
 
@@ -43,7 +43,7 @@ Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled ma
 ./scripts/build-app.sh
 ```
 
-This runs `swift build -c release`, assembles `dist/MarkdownView.app`, ad-hoc codesigns it, and prints the bundle size (target ≤ 20 MB).
+This runs `swift build -c release`, assembles `dist/Mist.app`, ad-hoc codesigns it, and prints the bundle size (target ≤ 20 MB).
 
 Or build the binary only:
 
@@ -55,13 +55,13 @@ swift build -c release
 
 ```bash
 # App bundle
-open dist/MarkdownView.app
+open dist/Mist.app
 
 # Binary with a file
-.build/release/MarkdownView path/to/file.md
+.build/release/Mist path/to/file.md
 
 # Or the bundled binary
-dist/MarkdownView.app/Contents/MacOS/MarkdownView path/to/file.md
+dist/Mist.app/Contents/MacOS/Mist path/to/file.md
 ```
 
 ## Test

@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>MarkdownView</string>
+	<string>Mist</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.markdownview.app</string>
+	<string>com.mist.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>MarkdownView</string>
+	<string>Mist</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIconName</key>

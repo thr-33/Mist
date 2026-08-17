@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct MarkdownViewApp: App {
+struct MistApp: App {
     @StateObject private var model: DocumentModel
 
     init() {

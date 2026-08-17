@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import MarkdownView
+@testable import Mist
 
 final class MarkdownParserTests: XCTestCase {
 

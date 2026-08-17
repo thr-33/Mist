@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_NAME="MarkdownView"
+APP_NAME="Mist"
 DIST_DIR="$ROOT/dist"
 APP_BUNDLE="$DIST_DIR/${APP_NAME}.app"
 CONTENTS="$APP_BUNDLE/Contents"
@@ -36,11 +36,11 @@ else
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>MarkdownView</string>
+	<string>Mist</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.markdownview.app</string>
+	<string>com.mist.app</string>
 	<key>CFBundleName</key>
-	<string>MarkdownView</string>
+	<string>Mist</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIconName</key>
