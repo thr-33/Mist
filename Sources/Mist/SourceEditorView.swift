@@ -22,6 +22,7 @@ struct SourceEditorView: NSViewRepresentable {
         textView.isRichText = false
         textView.allowsUndo = true
         textView.drawsBackground = true
+        // Kami editor background (warm ivory in light mode)
         textView.backgroundColor = Kami.editorBackground
         textView.textContainerInset = NSSize(width: 16, height: 16)
         // Soft-wrap markdown prose to the pane width.

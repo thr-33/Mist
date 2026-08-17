@@ -5,7 +5,7 @@ import Foundation
 
 /// Kami (紙) warm parchment palette — programmatic NSColors, no asset catalog.
 public enum Kami {
-    // Light surfaces
+    // Light surfaces — original Kami palette (#F5F4ED / #FAF9F5)
     public static let parchment = NSColor(srgbRed: 0xF5 / 255, green: 0xF4 / 255, blue: 0xED / 255, alpha: 1)
     public static let ivory = NSColor(srgbRed: 0xFA / 255, green: 0xF9 / 255, blue: 0xF5 / 255, alpha: 1)
     // Text (warm olive undertones)
@@ -13,7 +13,7 @@ public enum Kami {
     public static let darkWarm = NSColor(srgbRed: 0x3D / 255, green: 0x3D / 255, blue: 0x3A / 255, alpha: 1)
     public static let olive = NSColor(srgbRed: 0x50 / 255, green: 0x4E / 255, blue: 0x49 / 255, alpha: 1)
     public static let stone = NSColor(srgbRed: 0x6B / 255, green: 0x6A / 255, blue: 0x64 / 255, alpha: 1)
-    // Accent
+    // Accent — original Kami ink-blue
     public static let brand = NSColor(srgbRed: 0x1B / 255, green: 0x36 / 255, blue: 0x5D / 255, alpha: 1)
     public static let brandLight = NSColor(srgbRed: 0x2D / 255, green: 0x5A / 255, blue: 0x8A / 255, alpha: 1)
     // Borders
@@ -214,16 +214,18 @@ public enum MarkdownRenderer {
             if inner.length > 0 {
                 inner.addAttribute(.foregroundColor, value: style.oliveColor, range: range)
             }
+            // DEBUG: thicker left bar (~4pt visual weight) + brighter brand
+            let barFont = NSFont.systemFont(ofSize: style.baseFontSize * 1.15, weight: .bold)
             let barAttrs: [NSAttributedString.Key: Any] = [
-                .font: style.bodyFont,
+                .font: barFont,
                 .foregroundColor: style.brandColor,
             ]
-            let withBar = NSMutableAttributedString(string: "│ ", attributes: barAttrs)
+            let withBar = NSMutableAttributedString(string: "▌ ", attributes: barAttrs)
             withBar.append(inner)
             let fullRange = NSRange(location: 0, length: withBar.length)
             let para = NSMutableParagraphStyle()
             para.firstLineHeadIndent = 4
-            para.headIndent = 16
+            para.headIndent = 20
             para.lineHeightMultiple = style.bodyLineHeight
             withBar.addAttribute(.paragraphStyle, value: para, range: fullRange)
             return withBar
@@ -244,15 +246,17 @@ public enum MarkdownRenderer {
 
         case .unorderedList(let items):
             let result = NSMutableAttributedString()
+            // DEBUG: larger bullet markers so list styling is obvious
+            let markerFont = Kami.serifFont(ofSize: style.baseFontSize * 1.25, weight: .semibold)
             let markerAttrs: [NSAttributedString.Key: Any] = [
-                .font: style.bodyFont,
+                .font: markerFont,
                 .foregroundColor: style.brandColor,
             ]
             let bodyPara = bodyParagraphStyle(style)
             bodyPara.headIndent = 16
             bodyPara.firstLineHeadIndent = 0
             for (i, item) in items.enumerated() {
-                let bullet = NSAttributedString(string: "• ", attributes: markerAttrs)
+                let bullet = NSAttributedString(string: "● ", attributes: markerAttrs)
                 result.append(bullet)
                 let body = renderInlines(item, font: style.bodyFont, color: style.textColor, style: style)
                 result.append(body)
@@ -271,8 +275,9 @@ public enum MarkdownRenderer {
 
         case .orderedList(let items):
             let result = NSMutableAttributedString()
+            let markerFont = Kami.serifFont(ofSize: style.baseFontSize * 1.1, weight: .semibold)
             let markerAttrs: [NSAttributedString.Key: Any] = [
-                .font: style.bodyFont,
+                .font: markerFont,
                 .foregroundColor: style.brandColor,
             ]
             let bodyPara = bodyParagraphStyle(style)
@@ -344,9 +349,9 @@ public enum MarkdownRenderer {
             spacingAfter = 3
         }
 
-        // When a kick-line follows, keep heading→rule gap tight
+        // When a kick-line follows, leave clear gap so rule reads as separator (not underline)
         let wantsRule = (level == 1 || level == 2) && !isLast
-        let headingAfter: CGFloat = wantsRule ? 1 : spacingAfter
+        let headingAfter: CGFloat = wantsRule ? 8 : spacingAfter
 
         let headingPara = NSMutableParagraphStyle()
         headingPara.paragraphSpacingBefore = spacingBefore
@@ -373,11 +378,11 @@ public enum MarkdownRenderer {
             .paragraphStyle: headingPara,
         ]))
 
-        let ruleLength: CGFloat = level == 1 ? 58 : 34
-        let ruleHeight: CGFloat = level == 1 ? 2.25 : 1.75
-        // Brand ink-blue at low alpha (was cool secondaryColor)
-        let ruleAlpha: CGFloat = level == 1 ? 0.45 : 0.30
-        let ruleColor = style.brandColor.withAlphaComponent(ruleAlpha)
+        // Full text-container width (matches MarkdownTextView maxMeasure = 680)
+        let ruleLength: CGFloat = 680
+        let ruleHeight: CGFloat = 0.3
+        // Subtle warm gray section separator (Kami border-adjacent)
+        let ruleColor = NSColor(srgbRed: 0xD8 / 255, green: 0xD4 / 255, blue: 0xCC / 255, alpha: 1)
 
         let rule = hairlineRule(
             length: ruleLength,
@@ -420,23 +425,15 @@ public enum MarkdownRenderer {
         return result
     }
 
-    /// 1×-scale bitmap of a filled rectangle tinted with `color`.
+    /// 矢量式 hairline：按目标 backing scale 自动栅格化，Retina 上 0.5pt = 1 物理像素。
     private static func drawHairlineImage(length: CGFloat, height: CGFloat, color: NSColor) -> NSImage {
-        let pixelW = max(1, Int(ceil(length)))
-        let pixelH = max(1, Int(ceil(height)))
-        let size = NSSize(width: CGFloat(pixelW), height: CGFloat(pixelH))
-
-        let image = NSImage(size: size)
-        image.lockFocus()
-        if let ctx = NSGraphicsContext.current?.cgContext {
+        let size = NSSize(width: length, height: height)
+        return NSImage(size: size, flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             ctx.setFillColor(color.cgColor)
-            ctx.fill(CGRect(origin: .zero, size: size))
-        } else {
-            color.setFill()
-            NSBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
+            ctx.fill(rect)
+            return true
         }
-        image.unlockFocus()
-        return image
     }
 
     // MARK: - Tables

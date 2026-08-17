@@ -34,7 +34,11 @@ private struct AppearanceObserver: NSViewRepresentable {
             let dark = Kami.isDark
             if lastDark != dark {
                 lastDark = dark
-                onChange?()
+                // Defer so we never publish @Published changes during a view update.
+                let callback = onChange
+                DispatchQueue.main.async {
+                    callback?()
+                }
             }
         }
     }
@@ -491,6 +495,12 @@ final class DocumentModel: ObservableObject {
         - *Italic*, **bold**, `code`, ~~strikethrough~~, [links](https://example.com)
         - Live reload when the file changes (skips while dirty)
         - Font size (`Cmd+` / `Cmd-`), print (`Cmd+P`), reload (`Cmd+R`)
+
+        > Tip: Drop a `.md` file onto the dock icon to open it instantly.
+
+        ```
+        mist README.md
+        ```
         """
         rawMarkdown = welcome
         isDirty = false

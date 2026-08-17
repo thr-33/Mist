@@ -21,6 +21,7 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.isRichText = true
         textView.allowsUndo = false
         textView.drawsBackground = true
+        // Kami page background (warm beige parchment in light mode)
         textView.backgroundColor = Kami.pageBackground
         textView.textContainerInset = NSSize(width: 24, height: 20)
         // Soft-wrap to pane; reading measure capped at ~680pt in updateNSView
