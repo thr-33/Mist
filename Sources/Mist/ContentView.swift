@@ -256,6 +256,12 @@ final class DocumentModel: ObservableObject {
         return name
     }
 
+    nonisolated(unsafe) static weak var current: DocumentModel?
+    /// URLs received before first load completes (hot path still open immediately).
+    private var pendingOpenURLs: [URL] = []
+    /// Last successfully opened / requested path — used to dedupe multi-entry open events.
+    private var lastOpenedPath: String?
+
     init(initialPath: String? = nil) {
         // Load persisted mode before any @Published mutation observers attach.
         let stored = UserDefaults.standard.string(forKey: ViewMode.defaultsKey)
@@ -267,6 +273,34 @@ final class DocumentModel: ObservableObject {
                 self?.reloadFromDisk()
             }
         }
+        DocumentModel.current = self
+        // Pull any AppDelegate openFiles that arrived before this model existed.
+        drainAppDelegatePendingIntoLocal()
+    }
+
+    /// AppDelegate or external: route open-file for cold/hot launch timing.
+    func handleOpenURL(_ url: URL) {
+        let standardized = url.standardizedFileURL
+        if didLoadInitial {
+            openIfNeeded(url: standardized)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            // Prefer latest double-clicked file; keep a single pending entry.
+            pendingOpenURLs = [standardized]
+        }
+    }
+
+    /// Called from AppDelegate after enqueueing into the static pending queue.
+    func flushPendingOpen() {
+        drainAppDelegatePendingIntoLocal()
+        if didLoadInitial {
+            if let url = pendingOpenURLs.last {
+                pendingOpenURLs.removeAll()
+                openIfNeeded(url: url)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+        // else: loadInitialIfNeeded will consume pendingOpenURLs
     }
 
     func setViewMode(_ mode: ViewMode) {
@@ -279,13 +313,44 @@ final class DocumentModel: ObservableObject {
         setViewMode(viewMode == .preview ? .split : .preview)
     }
 
+    /// Priority: AppDelegate/Finder pending → local pending → CLI path → keep default demo doc.
     func loadInitialIfNeeded() {
         guard !didLoadInitial else { return }
         didLoadInitial = true
-        if let path = initialPath, !path.isEmpty {
-            let url = URL(fileURLWithPath: path)
-            open(url: url)
+        drainAppDelegatePendingIntoLocal()
+        if let url = pendingOpenURLs.last {
+            pendingOpenURLs.removeAll()
+            openIfNeeded(url: url)
+        } else if let path = initialPath, !path.isEmpty {
+            openIfNeeded(url: URL(fileURLWithPath: path))
         }
+        // else: keep the placeholder demo document already rendered in init
+    }
+
+    /// Move AppDelegate.pendingURLs into local pending (thread-safe drain).
+    private func drainAppDelegatePendingIntoLocal() {
+        let drained: [URL] = AppDelegate.pendingOpen.sync {
+            let copy = AppDelegate.pendingURLs
+            AppDelegate.pendingURLs.removeAll()
+            return copy
+        }
+        guard !drained.isEmpty else { return }
+        // Latest open wins for single-window single-doc policy.
+        if let last = drained.last {
+            pendingOpenURLs = [last.standardizedFileURL]
+        }
+    }
+
+    /// Open unless the same path is already loaded (dedupe openFiles + onOpenURL + loadInitial).
+    private func openIfNeeded(url: URL) {
+        let path = url.resolvingSymlinksInPath().path
+        if lastOpenedPath == path,
+           fileURL?.resolvingSymlinksInPath().path == path,
+           !isDirty {
+            return
+        }
+        lastOpenedPath = path
+        open(url: url)
     }
 
     func updateMarkdown(_ text: String) {
