@@ -307,14 +307,27 @@ final class MarkdownParserTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(glyphRange.length, 0)
         }
 
-        // Header cell "Name" should be bold
+        // Header cell "Name" uses real medium (500) — never synthetic boldFontMask
         let ns = plain as NSString
         let nameRange = ns.range(of: "Name")
         XCTAssertNotEqual(nameRange.location, NSNotFound)
         var effective = NSRange()
         if let font = attr.attribute(.font, at: nameRange.location, effectiveRange: &effective) as? NSFont {
             let traits = NSFontManager.shared.traits(of: font)
-            XCTAssertTrue(traits.contains(.boldFontMask), "header font should be bold")
+            XCTAssertFalse(
+                traits.contains(.boldFontMask),
+                "header font must not use synthetic bold (Kami medium 500)"
+            )
+            // Secondary color distinguishes header from body (Charter often has no Medium face)
+            if let color = attr.attribute(.foregroundColor, at: nameRange.location, effectiveRange: &effective) as? NSColor {
+                let header = color.usingColorSpace(.sRGB) ?? color
+                let secondary = Kami.secondaryText.usingColorSpace(.sRGB) ?? Kami.secondaryText
+                XCTAssertEqual(header.redComponent, secondary.redComponent, accuracy: 0.02)
+                XCTAssertEqual(header.greenComponent, secondary.greenComponent, accuracy: 0.02)
+                XCTAssertEqual(header.blueComponent, secondary.blueComponent, accuracy: 0.02)
+            } else {
+                XCTFail("expected foregroundColor on header cell")
+            }
         } else {
             XCTFail("expected font on header cell")
         }
@@ -406,20 +419,38 @@ final class MarkdownParserTests: XCTestCase {
         let style = MarkdownRenderer.Style(baseFontSize: 14)
         let attr = MarkdownRenderer.render("---", style: style)
         let plain = attr.string
-        XCTAssertTrue(plain.contains("─"), "thematic break should still use box-drawing runs")
+        // True hairline attachment (not box-drawing dashes) — lighter than body by geometry
+        XCTAssertTrue(
+            plain.contains("\u{FFFC}"),
+            "thematic break should be an NSTextAttachment (U+FFFC)"
+        )
+
+        let ns = plain as NSString
+        let attachRange = ns.range(of: "\u{FFFC}")
+        XCTAssertNotEqual(attachRange.location, NSNotFound)
 
         var effective = NSRange()
-        guard let color = attr.attribute(.foregroundColor, at: 0, effectiveRange: &effective) as? NSColor else {
+        let attrs = attr.attributes(at: attachRange.location, effectiveRange: &effective)
+        guard let attachment = attrs[.attachment] as? NSTextAttachment else {
+            return XCTFail("expected NSTextAttachment on thematic break")
+        }
+        // hairlineRule(length: 120, height: 0.4, color: Kami.hairline)
+        XCTAssertLessThanOrEqual(
+            attachment.bounds.height,
+            0.5,
+            "thematic break hairline should be ≤0.5pt tall (actual 0.4)"
+        )
+        XCTAssertEqual(attachment.bounds.width, 120, accuracy: 0.5)
+
+        guard let color = attrs[.foregroundColor] as? NSColor else {
             return XCTFail("expected foregroundColor on thematic break")
         }
-        // Resolve to sRGB components for a stable alpha read
         let resolved = color.usingColorSpace(.sRGB) ?? color
-        XCTAssertLessThan(resolved.alphaComponent, 1.0, "thematic break color should be translucent")
+        let hairline = Kami.hairline.usingColorSpace(.sRGB) ?? Kami.hairline
+        XCTAssertEqual(resolved.redComponent, hairline.redComponent, accuracy: 0.02)
+        XCTAssertEqual(resolved.greenComponent, hairline.greenComponent, accuracy: 0.02)
+        XCTAssertEqual(resolved.blueComponent, hairline.blueComponent, accuracy: 0.02)
         XCTAssertGreaterThan(resolved.alphaComponent, 0.0)
-
-        if let font = attr.attribute(.font, at: 0, effectiveRange: &effective) as? NSFont {
-            XCTAssertLessThan(font.pointSize, style.baseFontSize, "break font should be smaller than body")
-        }
     }
 
     @MainActor

@@ -19,6 +19,8 @@ public enum Kami {
     // Borders
     public static let border = NSColor(srgbRed: 0xE8 / 255, green: 0xE6 / 255, blue: 0xDC / 255, alpha: 1)
     public static let borderSoft = NSColor(srgbRed: 0xE5 / 255, green: 0xE3 / 255, blue: 0xD8 / 255, alpha: 1)
+    /// Warm section hairline (H1/H2 kick-line, thematic break) — border-adjacent sand gray.
+    public static let hairline = NSColor(srgbRed: 0xD8 / 255, green: 0xD4 / 255, blue: 0xCC / 255, alpha: 1)
     // Dark mode surfaces
     public static let darkSurface = NSColor(srgbRed: 0x30 / 255, green: 0x30 / 255, blue: 0x2E / 255, alpha: 1)
     public static let deepDark = NSColor(srgbRed: 0x14 / 255, green: 0x14 / 255, blue: 0x13 / 255, alpha: 1)
@@ -83,25 +85,55 @@ public enum Kami {
 
     // MARK: Fonts
 
-    /// Serif body/heading family: Charter → Palatino → Georgia → system.
+    /// Latin serif candidates (first installed wins as primary face).
+    private static let latinSerifCandidates = ["Charter", "Palatino", "Georgia"]
+
+    /// CJK serif cascade candidates (probed at use; first installed wins into cascade list).
+    private static let cjkSerifCandidates = ["Songti SC", "STSong", "Hiragino Mincho ProN", "Songti TC"]
+
+    /// Installed CJK serif PostScript/family names (Sendable strings; empty if none).
+    private static let availableCJKSerifNames: [String] = {
+        cjkSerifCandidates.filter { NSFont(name: $0, size: 12) != nil }
+    }()
+
+    /// Whether any CJK serif was found for cascade fallback.
+    public static var hasCJKSerifFallback: Bool { !availableCJKSerifNames.isEmpty }
+
+    /// Serif body/heading: Charter → Palatino → Georgia, with CJK cascade (Songti SC…).
+    /// Weights request real faces only — never `.boldFontMask` (no synthetic 600–700).
+    /// `.semibold` maps to medium (W05/500) so callers that pass “emphasis” stay at 500.
     public static func serifFont(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        let candidates = ["Charter", "Palatino", "Georgia"]
-        for name in candidates {
-            if let base = NSFont(name: name, size: size) {
-                let manager = NSFontManager.shared
-                let traits: NSFontTraitMask = weight >= .semibold ? .boldFontMask : []
-                if let converted = manager.font(
-                    withFamily: base.familyName ?? name,
-                    traits: traits,
-                    weight: weightValue(weight),
-                    size: size
-                ) {
-                    return converted
-                }
-                return base
+        let requested = normalizedWeight(weight)
+        let manager = NSFontManager.shared
+        for name in latinSerifCandidates {
+            guard let base = NSFont(name: name, size: size) else { continue }
+            let family = base.familyName ?? name
+            let face: NSFont
+            if let converted = manager.font(
+                withFamily: family,
+                traits: [],
+                weight: weightValue(requested),
+                size: size
+            ) {
+                face = converted
+            } else {
+                face = base
             }
+            return applyingCJKCascade(face, size: size)
         }
-        return NSFont.systemFont(ofSize: size, weight: weight)
+        let system = NSFont.systemFont(ofSize: size, weight: requested)
+        return applyingCJKCascade(system, size: size)
+    }
+
+    /// Attach CJK serif cascade so mixed EN/CJK runs fall back without synthetic bold.
+    private static func applyingCJKCascade(_ font: NSFont, size: CGFloat) -> NSFont {
+        let names = availableCJKSerifNames
+        guard !names.isEmpty else { return font }
+        let cascade = names.map { NSFontDescriptor(name: $0, size: 0) }
+        let desc = font.fontDescriptor.addingAttributes([
+            .cascadeList: cascade
+        ])
+        return NSFont(descriptor: desc, size: size) ?? font
     }
 
     /// Monospace: JetBrains Mono → system monospaced.
@@ -113,7 +145,13 @@ public enum Kami {
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
-    /// NSFontManager weight scale (0…15); 5 ≈ regular, 6 ≈ medium/semibold-ish.
+    /// Collapse emphasis weights onto real medium (500); never escalate to bold faces.
+    private static func normalizedWeight(_ weight: NSFont.Weight) -> NSFont.Weight {
+        if weight >= .semibold { return .medium }
+        return weight
+    }
+
+    /// NSFontManager weight scale (0…15); 5 ≈ regular, 6 ≈ medium (true 500 when face exists).
     private static func weightValue(_ weight: NSFont.Weight) -> Int {
         switch weight {
         case .ultraLight: return 1
@@ -121,10 +159,10 @@ public enum Kami {
         case .light: return 3
         case .regular: return 5
         case .medium: return 6
-        case .semibold: return 7
-        case .bold: return 8
-        case .heavy: return 9
-        case .black: return 10
+        case .semibold: return 6  // prefer medium face; never 7 + boldMask
+        case .bold: return 6
+        case .heavy: return 6
+        case .black: return 6
         default: return 5
         }
     }
@@ -210,17 +248,18 @@ public enum MarkdownRenderer {
                 }
             }
             let range = NSRange(location: 0, length: inner.length)
-            // Olive body text + brand-colored left bar via leading "│ " marker
+            // Olive body text (Kami blockquote)
             if inner.length > 0 {
                 inner.addAttribute(.foregroundColor, value: style.oliveColor, range: range)
             }
-            // DEBUG: thicker left bar (~4pt visual weight) + brighter brand
-            let barFont = NSFont.systemFont(ofSize: style.baseFontSize * 1.15, weight: .bold)
-            let barAttrs: [NSAttributedString.Key: Any] = [
-                .font: barFont,
-                .foregroundColor: style.brandColor,
-            ]
-            let withBar = NSMutableAttributedString(string: "▌ ", attributes: barAttrs)
+            // Geometric ~2pt brand left bar (NSTextAttachment), not a glyph hack
+            let barHeight = max(style.baseFontSize * style.bodyLineHeight, style.baseFontSize)
+            let bar = brandLeftBarAttachment(height: barHeight, color: style.brandColor, style: style)
+            let withBar = NSMutableAttributedString(attributedString: bar)
+            withBar.append(NSAttributedString(string: " ", attributes: [
+                .font: style.bodyFont,
+                .foregroundColor: style.oliveColor,
+            ]))
             withBar.append(inner)
             let fullRange = NSRange(location: 0, length: withBar.length)
             let para = NSMutableParagraphStyle()
@@ -231,23 +270,38 @@ public enum MarkdownRenderer {
             return withBar
 
         case .codeBlock(_, let code):
+            // Kami code-block: LH 1.5, continuous ivory fill, block padding via spacing
             let para = NSMutableParagraphStyle()
-            para.lineHeightMultiple = 1.15
-            para.paragraphSpacingBefore = 4
-            para.paragraphSpacing = 4
+            para.lineHeightMultiple = 1.5
+            para.paragraphSpacingBefore = 8
+            para.paragraphSpacing = 8
+            para.firstLineHeadIndent = 8
+            para.headIndent = 8
+            para.tailIndent = -8
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: style.monoFont,
                 .foregroundColor: style.textColor,
                 .backgroundColor: style.codeBackground,
                 .paragraphStyle: para,
             ]
-            let display = code.isEmpty ? " " : code
-            return NSAttributedString(string: display, attributes: attrs)
+            // Ensure every line (including blank) carries ivory background for continuous block feel
+            let raw = code.isEmpty ? " " : code
+            let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
+            let result = NSMutableAttributedString()
+            for (i, line) in lines.enumerated() {
+                let piece = line.isEmpty ? " " : String(line)
+                result.append(NSAttributedString(string: piece, attributes: attrs))
+                if i < lines.count - 1 {
+                    // Newline keeps the same background so rows read as one ivory card
+                    result.append(NSAttributedString(string: "\n", attributes: attrs))
+                }
+            }
+            return result
 
         case .unorderedList(let items):
             let result = NSMutableAttributedString()
-            // DEBUG: larger bullet markers so list styling is obvious
-            let markerFont = Kami.serifFont(ofSize: style.baseFontSize * 1.25, weight: .semibold)
+            // Native disc size/weight (body size, medium 500), brand color
+            let markerFont = Kami.serifFont(ofSize: style.baseFontSize, weight: .medium)
             let markerAttrs: [NSAttributedString.Key: Any] = [
                 .font: markerFont,
                 .foregroundColor: style.brandColor,
@@ -256,7 +310,7 @@ public enum MarkdownRenderer {
             bodyPara.headIndent = 16
             bodyPara.firstLineHeadIndent = 0
             for (i, item) in items.enumerated() {
-                let bullet = NSAttributedString(string: "● ", attributes: markerAttrs)
+                let bullet = NSAttributedString(string: "• ", attributes: markerAttrs)
                 result.append(bullet)
                 let body = renderInlines(item, font: style.bodyFont, color: style.textColor, style: style)
                 result.append(body)
@@ -275,7 +329,8 @@ public enum MarkdownRenderer {
 
         case .orderedList(let items):
             let result = NSMutableAttributedString()
-            let markerFont = Kami.serifFont(ofSize: style.baseFontSize * 1.1, weight: .semibold)
+            // Native numeral size/weight (body size, medium 500), brand color
+            let markerFont = Kami.serifFont(ofSize: style.baseFontSize, weight: .medium)
             let markerAttrs: [NSAttributedString.Key: Any] = [
                 .font: markerFont,
                 .foregroundColor: style.brandColor,
@@ -301,13 +356,14 @@ public enum MarkdownRenderer {
             return result
 
         case .thematicBreak:
-            // Warm stone hairline — not cool secondaryLabel gray
-            let breakColor = style.stoneColor.withAlphaComponent(0.35)
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: Kami.serifFont(ofSize: style.baseFontSize * 0.8, weight: .regular),
-                .foregroundColor: breakColor,
-            ]
-            return NSAttributedString(string: "────────────", attributes: attrs)
+            // True warm hairline (same language as H1/H2 section rules), not dash runs
+            return hairlineRule(
+                length: 120,
+                height: 0.4,
+                color: Kami.hairline,
+                paragraphSpacingAfter: 4,
+                style: style
+            )
 
         case .table(let columns, let rows):
             return renderTable(columns: columns, rows: rows, style: style)
@@ -332,8 +388,8 @@ public enum MarkdownRenderer {
             default: return style.baseFontSize
             }
         }()
-        // Weight 500 (semibold) serif — Kami locks serif headings at 500, not bold 700
-        let font = Kami.serifFont(ofSize: size, weight: .semibold)
+        // Real medium (500) serif — Kami locks headings at 500; no synthetic bold
+        let font = Kami.serifFont(ofSize: size, weight: .medium)
 
         let spacingBefore: CGFloat
         let spacingAfter: CGFloat
@@ -381,13 +437,11 @@ public enum MarkdownRenderer {
         // Full text-container width (matches MarkdownTextView maxMeasure = 680)
         let ruleLength: CGFloat = 680
         let ruleHeight: CGFloat = 0.3
-        // Subtle warm gray section separator (Kami border-adjacent)
-        let ruleColor = NSColor(srgbRed: 0xD8 / 255, green: 0xD4 / 255, blue: 0xCC / 255, alpha: 1)
 
         let rule = hairlineRule(
             length: ruleLength,
             height: ruleHeight,
-            color: ruleColor,
+            color: Kami.hairline,
             paragraphSpacingAfter: spacingAfter,
             style: style
         )
@@ -425,7 +479,29 @@ public enum MarkdownRenderer {
         return result
     }
 
-    /// 矢量式 hairline：按目标 backing scale 自动栅格化，Retina 上 0.5pt = 1 物理像素。
+    /// ~2pt brand left bar for blockquotes (geometric attachment, Kami border-left analogue).
+    private static func brandLeftBarAttachment(
+        height: CGFloat,
+        color: NSColor,
+        style: Style
+    ) -> NSAttributedString {
+        let width: CGFloat = 2
+        let image = drawHairlineImage(length: width, height: height, color: color)
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Center bar on the text line (negative y shifts down from baseline)
+        let yOffset = (style.baseFontSize - height) * 0.5
+        attachment.bounds = CGRect(x: 0, y: yOffset, width: width, height: height)
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        result.addAttributes([
+            .font: style.bodyFont,
+            .foregroundColor: color,
+        ], range: NSRange(location: 0, length: result.length))
+        return result
+    }
+
+    /// Vector hairline fill; Retina rasterizes 0.5pt cleanly via NSImage backing scale.
     private static func drawHairlineImage(length: CGFloat, height: CGFloat, color: NSColor) -> NSImage {
         let size = NSSize(width: length, height: height)
         return NSImage(size: size, flipped: false) { rect in
@@ -451,8 +527,8 @@ public enum MarkdownRenderer {
         table.layoutAlgorithm = .automaticLayoutAlgorithm
 
         let result = NSMutableAttributedString()
-        // Weight 500 serif for headers (not synthetic bold 700)
-        let headerFont = Kami.serifFont(ofSize: style.baseFontSize, weight: .semibold)
+        // Real medium (500) serif for headers — no synthetic bold
+        let headerFont = Kami.serifFont(ofSize: style.baseFontSize, weight: .medium)
 
         // Header row
         if columns.isEmpty {
@@ -583,25 +659,16 @@ public enum MarkdownRenderer {
     ) -> NSAttributedString {
         switch node {
         case .text(let s):
-            return NSAttributedString(string: s, attributes: [
-                .font: font,
-                .foregroundColor: color,
-            ])
+            return textRun(s, font: font, color: color)
 
         case .bold(let s):
-            // Kami locks strong at weight 500 (not synthetic 700)
-            let bold = Kami.serifFont(ofSize: font.pointSize, weight: .semibold)
-            return NSAttributedString(string: s, attributes: [
-                .font: bold,
-                .foregroundColor: color,
-            ])
+            // Kami locks strong at real medium 500 (not synthetic 700)
+            let emphasis = Kami.serifFont(ofSize: font.pointSize, weight: .medium)
+            return textRun(s, font: emphasis, color: color)
 
         case .italic(let s):
             let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
-            return NSAttributedString(string: s, attributes: [
-                .font: italic,
-                .foregroundColor: color,
-            ])
+            return textRun(s, font: italic, color: color)
 
         case .code(let s):
             return NSAttributedString(string: s, attributes: [
@@ -611,28 +678,70 @@ public enum MarkdownRenderer {
             ])
 
         case .link(let text, let url):
-            return NSAttributedString(string: text, attributes: [
+            var attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: style.linkColor,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .toolTip: url,
                 .link: url,
-            ])
+            ]
+            if containsCJK(text) {
+                attrs[.kern] = 0.3
+            }
+            return NSAttributedString(string: text, attributes: attrs)
 
         case .strikethrough(let s):
-            return NSAttributedString(string: s, attributes: [
+            var attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: color,
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-            ])
+            ]
+            if containsCJK(s) {
+                attrs[.kern] = 0.3
+            }
+            return NSAttributedString(string: s, attributes: attrs)
 
         case .underline(let s):
-            return NSAttributedString(string: s, attributes: [
+            var attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: color,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
-            ])
+            ]
+            if containsCJK(s) {
+                attrs[.kern] = 0.3
+            }
+            return NSAttributedString(string: s, attributes: attrs)
         }
+    }
+
+    /// Body/heading text run: apply 0.3pt kern when the run contains CJK.
+    private static func textRun(_ string: String, font: NSFont, color: NSColor) -> NSAttributedString {
+        var attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+        ]
+        if containsCJK(string) {
+            attrs[.kern] = 0.3
+        }
+        return NSAttributedString(string: string, attributes: attrs)
+    }
+
+    /// CJK unified ideographs + CJK punctuation / kana / hangul (Kami 0.3pt tracking target).
+    private static func containsCJK(_ string: String) -> Bool {
+        for scalar in string.unicodeScalars {
+            let v = scalar.value
+            switch v {
+            case 0x3000...0x303F: return true  // CJK punctuation
+            case 0x3040...0x30FF: return true  // Hiragana / Katakana
+            case 0x3400...0x4DBF: return true  // CJK ext A
+            case 0x4E00...0x9FFF: return true  // CJK unified
+            case 0xF900...0xFAFF: return true  // CJK compatibility
+            case 0xFF00...0xFFEF: return true  // fullwidth forms
+            case 0xAC00...0xD7AF: return true  // Hangul syllables
+            default: continue
+            }
+        }
+        return false
     }
 
     // MARK: - Paragraph helpers
