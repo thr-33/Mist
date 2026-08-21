@@ -79,7 +79,7 @@ The app icon is generated with a zero-dependency AppKit script:
 swift scripts/generate-icon.swift
 ```
 
-This draws a Big Sur–style squircle (indigo→blue gradient + white **M↓** markdown mark), writes the full `.iconset`, builds `scripts/AppIcon.icns` via `iconutil`, and saves `icon-preview.png` at the project root for a quick look without building. `./scripts/build-app.sh` embeds the icns into the bundle automatically.
+This clips `scripts/app-icon-source.png` (markdown `#` + heading bar) to a Big Sur–style squircle, writes the full `.iconset`, builds `scripts/AppIcon.icns` via `iconutil`, and saves `icon-preview.png` at the project root for a quick look without building. `./scripts/build-app.sh` embeds the icns into the bundle automatically.
 
 ## Size
 
