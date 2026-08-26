@@ -11,7 +11,8 @@ permissions:
 jobs:
   test:
     name: Swift tests
-    runs-on: macos-14
+    # macos-14's default toolchain is Swift 5.10; Mist requires Swift 6.
+    runs-on: macos-15
 
     steps:
       - name: Check out repository
