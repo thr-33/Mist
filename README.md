@@ -10,6 +10,15 @@ Mist is an intentionally small Markdown app for macOS. It opens quickly, keeps e
 
 **中文简介：** Mist 是一个使用 SwiftUI + AppKit 编写的轻量级 macOS Markdown 查看器和编辑器。它支持实时预览、双栏编辑、文件监听和原生打印，适合作为日常阅读 Markdown 以及学习 macOS 原生开发的开源项目。
 
+## What makes Mist different?
+
+Mist is not a WebView wrapper, an Electron shell, or an HTML page in a native window. Its two defining choices are:
+
+1. **A fully hand-written rendering pipeline.** Markdown is parsed into Mist's own AST and rendered directly into native `NSAttributedString` / `NSTextTable` objects. There is no `WKWebView`, HTML/CSS/JavaScript runtime, or Markdown library doing the core work.
+2. **A remarkably small footprint.** A local Apple Silicon release build produces an executable of roughly **650 KB** (about 700 KB); the complete ad-hoc-signed `.app` is about **1.5 MB** including the app icon. Build flags, architecture, and assets can change these numbers slightly.
+
+This keeps Mist fast to launch, easy to inspect, and genuinely native to macOS.
+
 ## Why Mist?
 
 Most Markdown tools try to become full writing suites. Mist takes the opposite approach: one focused window, a fast native renderer, and the controls needed to read or make a small edit. The default experience is a distraction-free preview; press **⌘⇧E** whenever you need the source.
@@ -23,11 +32,13 @@ Most Markdown tools try to become full writing suites. Mist takes the opposite a
 - **Selection formatting toolbar** for bold, italic, underline, strikethrough, inline code, links, headings, quotes, lists, and fenced code
 - **GFM-style tables** with left, center, and right alignment rendered as native `NSTextTable`
 - **Native macOS behavior**: system dark mode, Cmd+F, copy/paste, printing, font-size controls, and Finder file associations
+- **Purely custom renderer**: Markdown → Mist AST → native `NSAttributedString`, with no WebView or HTML rendering layer
+- **Tiny release binary**: roughly 650 KB locally on Apple Silicon; the whole app bundle is about 1.5 MB with icon assets
 - **Zero third-party dependencies**: built with SwiftUI, AppKit, and Foundation
 
 ## Supported Markdown
 
-Mist uses a small hand-rolled parser focused on everyday Markdown:
+Mist uses a small, fully hand-written parser and renderer focused on everyday Markdown. This is a deliberate implementation choice—not a WebView or HTML/CSS wrapper:
 
 | Block syntax | Inline syntax |
 | --- | --- |
@@ -102,7 +113,13 @@ Generate the icon assets when needed:
 swift scripts/generate-icon.swift
 ```
 
-The repository is intentionally a plain Swift Package so it can be opened in Xcode or built from the command line. The main pieces are:
+The repository is intentionally a plain Swift Package so it can be opened in Xcode or built from the command line. The rendering path is:
+
+```text
+Markdown source → MarkdownParser → MarkdownAST → MarkdownRenderer → NSAttributedString / NSTextTable
+```
+
+The main pieces are:
 
 ```text
 Sources/Mist/
