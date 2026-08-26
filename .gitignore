@@ -2,3 +2,15 @@
 .DS_Store
 *.xcodeproj
 .swiftpm/
+
+# Generated app bundles and local build output
+dist/
+
+# Local planning, orchestration, and design exploration files
+.planning/
+.herdr/
+logo-candidates/
+...
+test-colors.swift
+test-kami-*.md
+test-kami-*.swift

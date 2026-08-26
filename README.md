@@ -1,90 +1,128 @@
 # Mist
 
-Ultra-lightweight native macOS markdown **viewer and editor** with live preview.
+> A tiny, native Markdown viewer and editor for macOS.
 
-Built with **SwiftUI + AppKit**, zero third-party dependencies. A hand-rolled markdown parser renders to `NSAttributedString`. Default layout is a single-pane full-window preview; toggle to a split-pane layout with editable source on the left and live preview on the right.
+[![Tests](https://github.com/thr-33/Mist/actions/workflows/test.yml/badge.svg)](https://github.com/thr-33/Mist/actions/workflows/test.yml)
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-111827)](https://www.apple.com/macos/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Mist is an intentionally small Markdown app for macOS. It opens quickly, keeps editing close to the source, and renders a calm, readable preview without a web view or third-party dependency.
+
+**中文简介：** Mist 是一个使用 SwiftUI + AppKit 编写的轻量级 macOS Markdown 查看器和编辑器。它支持实时预览、双栏编辑、文件监听和原生打印，适合作为日常阅读 Markdown 以及学习 macOS 原生开发的开源项目。
+
+## Why Mist?
+
+Most Markdown tools try to become full writing suites. Mist takes the opposite approach: one focused window, a fast native renderer, and the controls needed to read or make a small edit. The default experience is a distraction-free preview; press **⌘⇧E** whenever you need the source.
 
 ## Features
 
-- **Default single-pane preview**; toolbar button or **Cmd+Shift+E** toggles split-pane edit + live preview (mode remembered)
-- **Split-pane editor** — left: plain monospaced markdown source; right: live rendered preview
-- **Live preview** updates as you type
-- **Save** with Cmd+S (atomic write); **Save As…** via Cmd+Shift+S; dirty indicator (`•`) in the window title
-- **Open** files via Cmd+O, drag & drop, or CLI path argument
-- **Live reload** when the file changes on disk (does not clobber unsaved edits)
-- **Font size** increase/decrease (Cmd+ / Cmd-) applies to both panes
-- **Print** (Cmd+P) and **manual reload** (Cmd+R)
-- **Selection format toolbar** — popover above the source selection with bold, italic, underline (`<u>`), strikethrough, inline code, link, heading, quote, bullet list, and code block (toggles unwrap when already wrapped; dismisses on scroll / empty selection)
-- Text selection, copy, and Cmd+F find (native NSTextView)
-- Dark mode via semantic system colors
-- **GFM tables** (pipe tables with alignment) render as native `NSTextTable` in the preview
-- **Elegant section separation** — hairline kick-lines under H1/H2, breathing heading spacing, and light thematic dividers
+- **Preview-first window** with a remembered single-pane or split-pane layout
+- **Live editing** with the Markdown source on the left and rendered preview on the right
+- **Native file workflows**: open, drag and drop, command-line paths, Save, Save As, and atomic writes
+- **Live reload** when the current file changes on disk, without clobbering unsaved edits
+- **Selection formatting toolbar** for bold, italic, underline, strikethrough, inline code, links, headings, quotes, lists, and fenced code
+- **GFM-style tables** with left, center, and right alignment rendered as native `NSTextTable`
+- **Native macOS behavior**: system dark mode, Cmd+F, copy/paste, printing, font-size controls, and Finder file associations
+- **Zero third-party dependencies**: built with SwiftUI, AppKit, and Foundation
 
-### Markdown support
+## Supported Markdown
 
-| Blocks | Inlines |
-|--------|---------|
-| ATX headings `#` … `######` | `**bold**` |
-| Blockquotes `>` | `*italic*` |
-| Fenced code ` ``` ` | `` `inline code` `` |
-| Unordered lists `-` / `*` | `[link](url)` |
-| Ordered lists `1.` | `~~strikethrough~~` |
-| Thematic breaks `---` | `<u>underline</u>` |
-| Paragraphs | |
-| GFM tables (pipe tables with alignment) | |
+Mist uses a small hand-rolled parser focused on everyday Markdown:
+
+| Block syntax | Inline syntax |
+| --- | --- |
+| ATX headings `#` through `######` | **Bold** `**text**` |
+| Paragraphs | *Italic* `*text*` |
+| Blockquotes `>` | `Inline code` `` `code` `` |
+| Fenced code blocks ```` ``` ```` | [Links](https://example.com) `[text](url)` |
+| Unordered lists `-` / `*` | ~~Strikethrough~~ `~~text~~` |
+| Ordered lists `1.` | <u>Underline</u> `<u>text</u>` |
+| Thematic breaks `---` | GFM tables with alignment |
+
+Mist is not intended to be a complete CommonMark implementation. If a document depends on advanced Markdown extensions, check the rendered result before sharing it.
 
 ## Requirements
 
-- macOS 14.0+
-- Swift 6.0+ (Xcode 16+)
+- macOS 14.0 or later
+- Swift 6.0 or Xcode 16 or later
+- A Mac with Apple Silicon or Intel support for the installed Swift toolchain
 
-## Build
+## Build and run
+
+Clone the repository, then build the app bundle:
 
 ```bash
+git clone https://github.com/thr-33/Mist.git
+cd Mist
 ./scripts/build-app.sh
+open dist/Mist.app
 ```
 
-This runs `swift build -c release`, assembles `dist/Mist.app`, ad-hoc codesigns it, and prints the bundle size (target ≤ 20 MB).
+The build script runs a release build, assembles `dist/Mist.app`, embeds the icon, and applies an ad-hoc signature for local use. The generated `dist/` directory is intentionally ignored by Git.
 
-Or build the binary only:
+To build only the executable:
 
 ```bash
 swift build -c release
+.build/release/Mist path/to/document.md
 ```
 
-## Run
+To open a document with the app bundle:
 
 ```bash
-# App bundle
-open dist/Mist.app
-
-# Binary with a file
-.build/release/Mist path/to/file.md
-
-# Or the bundled binary
-dist/Mist.app/Contents/MacOS/Mist path/to/file.md
+dist/Mist.app/Contents/MacOS/Mist path/to/document.md
 ```
 
-## Test
+> Mist currently has no signed/notarized binary release. Building from source is the supported installation path for now.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘O` | Open a Markdown file |
+| `⌘S` | Save |
+| `⌘⇧S` | Save As… |
+| `⌘⇧E` | Toggle preview / split editor |
+| `⌘R` | Reload from disk |
+| `⌘P` | Print |
+| `⌘+` / `⌘-` | Increase / decrease font size |
+| `⌘F` | Find in the source editor |
+
+## Development
+
+Run the test suite before opening a pull request:
 
 ```bash
 swift test
 ```
 
-## Icon
-
-The app icon is generated with a zero-dependency AppKit script:
+Generate the icon assets when needed:
 
 ```bash
 swift scripts/generate-icon.swift
 ```
 
-This clips `scripts/app-icon-source.png` (markdown `#` + heading bar) to a Big Sur–style squircle, writes the full `.iconset`, builds `scripts/AppIcon.icns` via `iconutil`, and saves `icon-preview.png` at the project root for a quick look without building. `./scripts/build-app.sh` embeds the icns into the bundle automatically.
+The repository is intentionally a plain Swift Package so it can be opened in Xcode or built from the command line. The main pieces are:
 
-## Size
+```text
+Sources/Mist/
+├── MistApp.swift           # App lifecycle, commands, and file opening
+├── ContentView.swift       # Main window and view-mode presentation
+├── SourceEditorView.swift  # Editable NSTextView bridge
+├── MarkdownParser.swift    # Markdown -> AST parsing
+├── MarkdownAST.swift       # Block and inline model
+├── MarkdownRenderer.swift  # AST -> NSAttributedString rendering
+└── FileMonitor.swift       # On-disk change monitoring
+Tests/MistTests/             # Parser, renderer, and view-mode tests
+scripts/                    # App bundle and icon generation scripts
+```
 
-The release `.app` bundle is intentionally tiny — a single native executable plus `Info.plist` and app icon, typically well under 5 MB and always **≤ 20 MB**.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
+
+## Roadmap
+
+Ideas for future versions include richer Markdown compatibility, syntax highlighting, and a signed release download. Contributions and thoughtful issue reports are welcome; the project will remain focused rather than trying to become a full IDE.
 
 ## License
 
-MIT
+Mist is available under the [MIT License](LICENSE).
