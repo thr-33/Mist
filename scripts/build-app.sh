@@ -83,4 +83,10 @@ codesign --force --deep -s - "$APP_BUNDLE"
 echo "==> Bundle size:"
 du -sh "$APP_BUNDLE"
 
+SIZE_KB="$(du -sk "$APP_BUNDLE" | awk '{print $1}')"
+if [[ "$SIZE_KB" -gt 1024 ]]; then
+  echo "error: bundle is ${SIZE_KB} KB; keep dist/Mist.app at or below 1 MB" >&2
+  exit 1
+fi
+
 echo "==> Done: $APP_BUNDLE"

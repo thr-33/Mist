@@ -15,7 +15,7 @@ Mist is an intentionally small Markdown app for macOS. It opens quickly, keeps e
 Mist is not a WebView wrapper, an Electron shell, or an HTML page in a native window. Its two defining choices are:
 
 1. **A fully hand-written rendering pipeline.** Markdown is parsed into Mist's own AST and rendered directly into native `NSAttributedString` / `NSTextTable` objects. There is no `WKWebView`, HTML/CSS/JavaScript runtime, or Markdown library doing the core work.
-2. **A remarkably small footprint.** A local Apple Silicon release build produces an executable of roughly **650 KB** (about 700 KB); the complete ad-hoc-signed `.app` is about **1.5 MB** including the app icon. Build flags, architecture, and assets can change these numbers slightly.
+2. **A remarkably small footprint.** A local Apple Silicon release build produces an executable of roughly **650 KB**. After replacing the photographic icon with a compact vector mark, the complete ad-hoc-signed `.app` is about **860 KB** and stays under **1 MB**. Build flags, architecture, and assets can change these numbers slightly.
 
 This keeps Mist fast to launch, easy to inspect, and genuinely native to macOS.
 
@@ -33,7 +33,7 @@ Most Markdown tools try to become full writing suites. Mist takes the opposite a
 - **GFM-style tables** with left, center, and right alignment rendered as native `NSTextTable`
 - **Native macOS behavior**: system dark mode, Cmd+F, copy/paste, printing, font-size controls, and Finder file associations
 - **Purely custom renderer**: Markdown → Mist AST → native `NSAttributedString`, with no WebView or HTML rendering layer
-- **Tiny release binary**: roughly 650 KB locally on Apple Silicon; the whole app bundle is about 1.5 MB with icon assets
+- **Tiny release binary**: roughly 650 KB locally on Apple Silicon; the whole app bundle is about 860 KB and stays under 1 MB
 - **Zero third-party dependencies**: built with SwiftUI, AppKit, and Foundation
 
 ## Supported Markdown
@@ -107,11 +107,13 @@ Run the test suite before opening a pull request:
 swift test
 ```
 
-Generate the icon assets when needed:
+The app icon is drawn by a zero-dependency AppKit script from a few flat shapes, then packed into `scripts/AppIcon.icns`. Rebuild it with:
 
 ```bash
 swift scripts/generate-icon.swift
 ```
+
+`./scripts/build-app.sh` embeds the icon and fails if the assembled `.app` grows past 1 MB.
 
 The repository is intentionally a plain Swift Package so it can be opened in Xcode or built from the command line. The rendering path is:
 
