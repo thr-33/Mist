@@ -142,6 +142,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
 
 Ideas for future versions include richer Markdown compatibility, syntax highlighting, and a signed release download. Contributions and thoughtful issue reports are welcome; the project will remain focused rather than trying to become a full IDE.
 
+## Support
+
+If Mist is useful to you, you can support development on [Ko-fi](https://ko-fi.com/trywho).
+
 ## License
 
 Mist is available under the [MIT License](LICENSE).
