@@ -5,9 +5,11 @@ import SwiftUI
 struct MarkdownTextView: NSViewRepresentable {
     var attributedText: NSAttributedString
     var onOpenFile: ((URL) -> Void)?
+    /// When non-nil (split mode), participates in bidirectional scroll sync.
+    var scrollSync: ScrollSyncCoordinator? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onOpenFile: onOpenFile)
+        Coordinator(onOpenFile: onOpenFile, scrollSync: scrollSync)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -39,6 +41,9 @@ struct MarkdownTextView: NSViewRepresentable {
         ]
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
+        context.coordinator.attachScrollObserver(to: scrollView)
+        context.coordinator.scrollSync = scrollSync
+        scrollSync?.register(.preview, scrollView: scrollView)
 
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -53,6 +58,8 @@ struct MarkdownTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.onOpenFile = onOpenFile
+        context.coordinator.scrollSync = scrollSync
+        scrollSync?.register(.preview, scrollView: scrollView)
 
         // Keep parchment / charcoal in sync with appearance changes
         let page = Kami.pageBackground
@@ -65,17 +72,27 @@ struct MarkdownTextView: NSViewRepresentable {
         // Cap line length at ~680pt for comfortable reading measure
         applyReadingMeasure(to: textView, in: scrollView)
 
-        if textView.attributedString().isEqual(to: attributedText) {
-            return
+        var contentChanged = false
+        if !textView.attributedString().isEqual(to: attributedText) {
+            let selected = textView.selectedRanges
+            textView.textStorage?.setAttributedString(attributedText)
+            if let ranges = selected as? [NSRange],
+               let first = ranges.first,
+               first.location + first.length <= textView.string.utf16.count {
+                textView.selectedRanges = selected
+            }
+            contentChanged = true
         }
 
-        let selected = textView.selectedRanges
-        textView.textStorage?.setAttributedString(attributedText)
-        if let ranges = selected as? [NSRange],
-           let first = ranges.first,
-           first.location + first.length <= textView.string.utf16.count {
-            textView.selectedRanges = selected
+        // Live preview / resize can change scrollable range — keep shared progress.
+        if contentChanged {
+            scrollSync?.reapply(to: .preview)
         }
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.scrollSync?.unregister(.preview, scrollView: scrollView)
+        coordinator.detachScrollObservers()
     }
 
     /// Cap container width at 680pt so long lines stay comfortable to read.
@@ -93,12 +110,75 @@ struct MarkdownTextView: NSViewRepresentable {
         container.widthTracksTextView = available <= maxMeasure
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onOpenFile: ((URL) -> Void)?
+        var scrollSync: ScrollSyncCoordinator?
         weak var textView: NSTextView?
 
-        init(onOpenFile: ((URL) -> Void)?) {
+        private var scrollObserver: NSObjectProtocol?
+        private var boundsObserver: NSObjectProtocol?
+        private var endLiveScrollObserver: NSObjectProtocol?
+
+        init(onOpenFile: ((URL) -> Void)?, scrollSync: ScrollSyncCoordinator?) {
             self.onOpenFile = onOpenFile
+            self.scrollSync = scrollSync
+        }
+
+        deinit {
+            MainActor.assumeIsolated {
+                detachScrollObservers()
+            }
+        }
+
+        func detachScrollObservers() {
+            let nc = NotificationCenter.default
+            if let scrollObserver {
+                nc.removeObserver(scrollObserver)
+                self.scrollObserver = nil
+            }
+            if let boundsObserver {
+                nc.removeObserver(boundsObserver)
+                self.boundsObserver = nil
+            }
+            if let endLiveScrollObserver {
+                nc.removeObserver(endLiveScrollObserver)
+                self.endLiveScrollObserver = nil
+            }
+        }
+
+        func attachScrollObserver(to scrollView: NSScrollView) {
+            detachScrollObservers()
+            let nc = NotificationCenter.default
+            scrollObserver = nc.addObserver(
+                forName: NSScrollView.didLiveScrollNotification,
+                object: scrollView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.scrollSync?.userScrolled(.preview, kind: .live)
+                }
+            }
+            endLiveScrollObserver = nc.addObserver(
+                forName: NSScrollView.didEndLiveScrollNotification,
+                object: scrollView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.scrollSync?.endUserScroll(.preview)
+                }
+            }
+            boundsObserver = nc.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    // Keyboard/caret/layout: propagate without sticky-locking.
+                    self?.scrollSync?.userScrolled(.preview, kind: .nonLive)
+                }
+            }
+            scrollView.contentView.postsBoundsChangedNotifications = true
         }
 
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {

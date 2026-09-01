@@ -63,6 +63,8 @@ struct ContentView: View {
     @ObservedObject var model: DocumentModel
     @AppStorage("splitFraction") private var splitFraction: Double = 0.5
     @State private var dragStartFraction: Double?
+    /// Split-pane scroll sync only; unused in preview-only mode.
+    @StateObject private var scrollSync = ScrollSyncCoordinator()
 
     private let dividerWidth: CGFloat = 6
     private let leftMinWidth: CGFloat = 340
@@ -120,7 +122,8 @@ struct ContentView: View {
                         set: { model.updateMarkdown($0) }
                     ),
                     fontSize: model.fontSize,
-                    onTextChange: { model.updateMarkdown($0) }
+                    onTextChange: { model.updateMarkdown($0) },
+                    scrollSync: scrollSync
                 )
                 .frame(width: leftWidth)
                 .frame(maxHeight: .infinity)
@@ -131,7 +134,8 @@ struct ContentView: View {
                     attributedText: model.attributedText,
                     onOpenFile: { url in
                         model.open(url: url)
-                    }
+                    },
+                    scrollSync: scrollSync
                 )
                 .frame(minWidth: rightMinWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

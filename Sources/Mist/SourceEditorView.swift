@@ -6,9 +6,11 @@ struct SourceEditorView: NSViewRepresentable {
     @Binding var text: String
     var fontSize: CGFloat
     var onTextChange: (String) -> Void
+    /// When non-nil (split mode), participates in bidirectional scroll sync.
+    var scrollSync: ScrollSyncCoordinator? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTextChange: onTextChange)
+        Coordinator(onTextChange: onTextChange, scrollSync: scrollSync)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -44,6 +46,8 @@ struct SourceEditorView: NSViewRepresentable {
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         context.coordinator.attachScrollObserver(to: scrollView)
+        context.coordinator.scrollSync = scrollSync
+        scrollSync?.register(.source, scrollView: scrollView)
 
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
@@ -58,6 +62,8 @@ struct SourceEditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.onTextChange = onTextChange
+        context.coordinator.scrollSync = scrollSync
+        scrollSync?.register(.source, scrollView: scrollView)
         context.coordinator.isUpdating = true
         defer { context.coordinator.isUpdating = false }
 
@@ -82,45 +88,68 @@ struct SourceEditorView: NSViewRepresentable {
                first.location + first.length <= textView.string.utf16.count {
                 textView.selectedRanges = selected
             }
+            // Do not reapply sync here: typing/caret scroll owns this pane; the
+            // bounds observer propagates any resulting progress to the preview.
         }
+
+        // Font-size changes alter scrollable range; keep normalized progress.
+        if fontSize != context.coordinator.lastFontSize {
+            context.coordinator.lastFontSize = fontSize
+            scrollSync?.reapply(to: .source)
+        }
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.scrollSync?.unregister(.source, scrollView: scrollView)
+        coordinator.detachScrollObservers()
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate, NSPopoverDelegate {
         var onTextChange: (String) -> Void
+        var scrollSync: ScrollSyncCoordinator?
         weak var textView: NSTextView?
         var isUpdating = false
+        var lastFontSize: CGFloat = 0
 
         private var formatPopover: NSPopover?
         private var scrollObserver: NSObjectProtocol?
         private var boundsObserver: NSObjectProtocol?
+        private var endLiveScrollObserver: NSObjectProtocol?
         /// Suppress re-entrant selection updates while we adjust selection after format.
         private var isApplyingFormat = false
 
-        init(onTextChange: @escaping (String) -> Void) {
+        init(onTextChange: @escaping (String) -> Void, scrollSync: ScrollSyncCoordinator?) {
             self.onTextChange = onTextChange
+            self.scrollSync = scrollSync
         }
 
         deinit {
             // Coordinator is @MainActor; deinit is nonisolated. Observer tokens are
             // non-Sendable NSObjectProtocol — tear down under MainActor isolation.
             MainActor.assumeIsolated {
-                if let scrollObserver {
-                    NotificationCenter.default.removeObserver(scrollObserver)
-                }
-                if let boundsObserver {
-                    NotificationCenter.default.removeObserver(boundsObserver)
-                }
+                detachScrollObservers()
+            }
+        }
+
+        func detachScrollObservers() {
+            let nc = NotificationCenter.default
+            if let scrollObserver {
+                nc.removeObserver(scrollObserver)
+                self.scrollObserver = nil
+            }
+            if let boundsObserver {
+                nc.removeObserver(boundsObserver)
+                self.boundsObserver = nil
+            }
+            if let endLiveScrollObserver {
+                nc.removeObserver(endLiveScrollObserver)
+                self.endLiveScrollObserver = nil
             }
         }
 
         func attachScrollObserver(to scrollView: NSScrollView) {
-            if let scrollObserver {
-                NotificationCenter.default.removeObserver(scrollObserver)
-            }
-            if let boundsObserver {
-                NotificationCenter.default.removeObserver(boundsObserver)
-            }
+            detachScrollObservers()
             let nc = NotificationCenter.default
             scrollObserver = nc.addObserver(
                 forName: NSScrollView.didLiveScrollNotification,
@@ -128,7 +157,16 @@ struct SourceEditorView: NSViewRepresentable {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.hideFormatToolbar()
+                    self?.handleUserScroll(kind: .live)
+                }
+            }
+            endLiveScrollObserver = nc.addObserver(
+                forName: NSScrollView.didEndLiveScrollNotification,
+                object: scrollView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.scrollSync?.endUserScroll(.source)
                 }
             }
             boundsObserver = nc.addObserver(
@@ -137,10 +175,16 @@ struct SourceEditorView: NSViewRepresentable {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.hideFormatToolbar()
+                    // Keyboard/caret/layout: propagate without sticky-locking.
+                    self?.handleUserScroll(kind: .nonLive)
                 }
             }
             scrollView.contentView.postsBoundsChangedNotifications = true
+        }
+
+        private func handleUserScroll(kind: ScrollSyncScrollKind) {
+            hideFormatToolbar()
+            scrollSync?.userScrolled(.source, kind: kind)
         }
 
         func textDidChange(_ notification: Notification) {
